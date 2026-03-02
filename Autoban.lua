@@ -123,7 +123,7 @@ end
 -- ============================================================
 -- UI
 -- ============================================================
-local MiscTab = getgenv().RaihjnTab
+local MiscTab = getgenv().RaihjnMiscTab
 
 MiscTab:CreateSection("Auto Ban")
 
