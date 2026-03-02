@@ -20,6 +20,18 @@ local ModKeywords = {
     "moderator", "helper", "support", "official"
 }
 
+local function ForceRestoreUI()
+    pcall(function()
+        if UIManager then
+            if type(UIManager.ClosePrompt)=="function" then UIManager:ClosePrompt() end
+            if type(UIManager.ShowHUD)=="function"     then UIManager:ShowHUD() end
+            if type(UIManager.ShowUI)=="function"      then UIManager:ShowUI() end
+        end
+        for _, g in pairs(LP.PlayerGui:GetDescendants()) do
+            if g:IsA("Frame") and g.Name:lower():find("prompt") then g.Visible=false end
+        end
+    end)
+end
 -- ============================================================
 -- FUNGSI BAN
 -- ============================================================
@@ -46,6 +58,7 @@ local function BanPlayer(player)
             ButtonAction = "ban",
             Inputs       = {}
         })
+        ForceRestoreUI()
     end)
     
     task.wait(0.5)
@@ -108,6 +121,7 @@ Players.PlayerAdded:Connect(function(player)
         print("[AutoBan] Player masuk:", player.Name)
         BanPlayer(player)
     end
+    ForceRestoreUI()
 end)
 
 -- Cek player yang sudah ada di server saat script load
