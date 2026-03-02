@@ -1,162 +1,183 @@
-local Players    = game:GetService("Players")
-local LP         = Players.LocalPlayer
-local RS         = game:GetService("ReplicatedStorage")
+-- ============================================================
+-- Auto Drop Seed - Untuk RaihjnDev Loader
+-- ============================================================
+
+-- Cari tab yang tersedia (prioritas: AutoFarm, lalu Misc)
+local tab = getgenv().RaihjnAutoFarmTab or getgenv().RaihjnMiscTab
+if not tab then
+    warn("[AutoDrop] Tidak menemukan tab AutoFarm atau Misc, buat tab baru...")
+    tab = Rayfield:CreateTab("AutoDrop", nil)
+end
+
+local Rayfield = getgenv().Rayfield
+if not Rayfield then
+    warn("[AutoDrop] Rayfield tidak ditemukan! Pastikan loader dijalankan.")
+    return
+end
+
+-- ============================================================
+-- SERVICES & MODULES
+-- ============================================================
+local Players = game:GetService("Players")
+local LP = Players.LocalPlayer
+local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
--- ============================================================
--- REMOTES
--- ============================================================
-local UIPromptEvent    = RS:WaitForChild("Managers"):WaitForChild("UIManager"):WaitForChild("UIPromptEvent")
-local PlayerInspect    = RS:WaitForChild("Remotes"):WaitForChild("PlayerInspectPlayer")
+-- Load InventoryMod dan UIManager (dengan pcall agar aman)
+local InventoryMod
+pcall(function() InventoryMod = require(RS:WaitForChild("Modules"):WaitForChild("Inventory")) end)
 
--- ============================================================
--- CONFIG
--- ============================================================
-local AutoBanEnabled   = false
-local AutoLeaveEnabled = false
-local Whitelist        = {}  -- username yang tidak di-ban
-local TotalBanned      = 0   -- total player yang berhasil di-ban
-
--- Daftar keyword nama mod/admin (tambah sendiri)
-local ModKeywords = {
-    "mod", "admin", "staff", "dev", "developer",
-    "moderator", "helper", "support", "official"
-}
-
--- UIManager (untuk ForceRestoreUI, opsional)
 local UIManager
 pcall(function() UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager")) end)
 
 -- ============================================================
--- FUNGSI BANTU RESTORE UI (menutup prompt)
+-- FUNGSI INVENTORY (diadaptasi dari script pabrik)
+-- ============================================================
+local function GetAllItems()
+    local results = {}
+    local stacks = nil
+
+    if InventoryMod then
+        for _, key in ipairs({"Stacks", "Items", "stacks", "items"}) do
+            if type(InventoryMod[key]) == "table" then
+                stacks = InventoryMod[key]
+                break
+            end
+        end
+        if not stacks then
+            for _, m in ipairs({"GetStacks", "GetItems", "GetInventory"}) do
+                if type(InventoryMod[m]) == "function" then
+                    local ok, d = pcall(function() return InventoryMod[m](InventoryMod) end)
+                    if ok and type(d) == "table" then
+                        stacks = d
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if stacks then
+        for slotIndex, data in pairs(stacks) do
+            if type(data) == "table" then
+                local id = data.Id or data.ItemId or data.item_id or data.ID
+                if id then
+                    local amt = tonumber(data.Amount or data.Amt or data.Count or 1) or 1
+                    table.insert(results, {Slot = slotIndex, Id = tostring(id), Amount = amt})
+                end
+            end
+        end
+    end
+
+    -- Backpack fallback
+    local bp = LP:FindFirstChildOfClass("Backpack")
+    if bp then
+        for _, tool in pairs(bp:GetChildren()) do
+            if tool:IsA("Tool") then
+                local id = tostring(tool:GetAttribute("Id") or tool:GetAttribute("ID") or tool:GetAttribute("ItemId") or tool.Name)
+                local amt = tonumber(tool:GetAttribute("Amount") or 1) or 1
+                table.insert(results, {Slot = tool.Name, Id = id, Amount = amt})
+            end
+        end
+    end
+
+    return results
+end
+
+local function GetSlotByItemID(targetID)
+    if not targetID or targetID == "" then return nil end
+    targetID = tostring(targetID)
+    for _, item in ipairs(GetAllItems()) do
+        if item.Id == targetID and item.Amount > 0 then
+            return item.Slot
+        end
+    end
+    return nil
+end
+
+local function GetItemAmountByID(targetID)
+    if not targetID or targetID == "" then return 0 end
+    targetID = tostring(targetID)
+    local total = 0
+    for _, item in ipairs(GetAllItems()) do
+        if item.Id == targetID then
+            total = total + item.Amount
+        end
+    end
+    return total
+end
+
+-- ============================================================
+-- FUNGSI DROP (sama seperti di pabrik)
+-- ============================================================
+local function DropItemLogic(targetID, dropAmount)
+    local slot = GetSlotByItemID(targetID)
+    if not slot then return false end
+
+    local dropR = RS:WaitForChild("Remotes"):FindFirstChild("PlayerDrop") or RS:WaitForChild("Remotes"):FindFirstChild("PlayerDropItem")
+    local promptR = RS:WaitForChild("Managers"):WaitForChild("UIManager"):FindFirstChild("UIPromptEvent")
+
+    if dropR and promptR then
+        pcall(function() dropR:FireServer(slot) end)
+        task.wait(0.2)
+        pcall(function() promptR:FireServer({ButtonAction = "drp", Inputs = {amt = tostring(dropAmount)}}) end)
+        task.wait(0.1)
+        pcall(function()
+            for _, g in pairs(LP.PlayerGui:GetDescendants()) do
+                if g:IsA("Frame") and g.Name:lower():find("prompt") then
+                    g.Visible = false
+                end
+            end
+        end)
+        return true
+    end
+    return false
+end
+
+-- ============================================================
+-- FUNGSI FORCE RESTORE UI
 -- ============================================================
 local function ForceRestoreUI()
     pcall(function()
         if UIManager then
             if type(UIManager.ClosePrompt) == "function" then UIManager:ClosePrompt() end
-            if type(UIManager.ShowHUD) == "function"     then UIManager:ShowHUD() end
-            if type(UIManager.ShowUI) == "function"      then UIManager:ShowUI() end
+            if type(UIManager.ShowHUD) == "function" then UIManager:ShowHUD() end
+            if type(UIManager.ShowUI) == "function" then UIManager:ShowUI() end
         end
-        for _, g in pairs(LP.PlayerGui:GetDescendants()) do
-            if g:IsA("Frame") and g.Name:lower():find("prompt") then
-                g.Visible = false
+        if LP and LP.PlayerGui then
+            for _, g in pairs(LP.PlayerGui:GetDescendants()) do
+                if g:IsA("Frame") and g.Name:lower():find("prompt") then
+                    g.Visible = false
+                end
             end
         end
     end)
 end
 
 -- ============================================================
--- FUNGSI BAN
+-- FUNGSI MENGHASILKAN DAFTAR ITEM UNIK UNTUK DROPDOWN
 -- ============================================================
-local function BanPlayer(player)
-    if player == LP then return end  -- jangan ban diri sendiri
-
-    -- Cek whitelist
-    for _, name in ipairs(Whitelist) do
-        if player.Name:lower() == name:lower() then
-            print("[AutoBan] Skip (whitelist):", player.Name)
-            return
+local function GetUniqueItemList()
+    local items = GetAllItems()
+    local seen = {}
+    local list = {}
+    for _, item in ipairs(items) do
+        if not seen[item.Id] then
+            seen[item.Id] = true
+            table.insert(list, item.Id)
         end
     end
-
-    print("[AutoBan] Banning:", player.Name)
-
-    -- Step 1: Open player inspect (set target)
-    pcall(function() PlayerInspect:FireServer(player) end)
-    task.wait(0.3)
-
-    -- Step 2: Fire ban
-    pcall(function()
-        UIPromptEvent:FireServer({
-            ButtonAction = "ban",
-            Inputs       = {}
-        })
-        ForceRestoreUI()
-    end)
-
-    task.wait(0.5)
-
-    -- Hitung total banned
-    TotalBanned = TotalBanned + 1
-
-    Rayfield:Notify({
-        Title   = "Auto Ban",
-        Content = "Banned: @" .. player.Name,
-        Duration = 4,
-    })
-end
-
--- ============================================================
--- FUNGSI CEK MOD
--- ============================================================
-local function IsModOrAdmin(player)
-    local nameLower = player.Name:lower()
-    for _, keyword in ipairs(ModKeywords) do
-        if nameLower:find(keyword) then return true, keyword end
-    end
-    -- Cek badge/rank dari DisplayName juga
-    local displayLower = player.DisplayName:lower()
-    for _, keyword in ipairs(ModKeywords) do
-        if displayLower:find(keyword) then return true, keyword end
-    end
-    return false, nil
-end
-
-local function LeaveGame()
-    print("[AutoLeave] Mod/Admin terdeteksi! Keluar...")
-    Rayfield:Notify({
-        Title   = "AutoLeave",
-        Content = "Mod terdeteksi! Keluar dari world...",
-        Duration = 3,
-    })
-    task.wait(1)
-    -- Teleport ke menu / leave server
-    local TeleportService = game:GetService("TeleportService")
-    pcall(function()
-        TeleportService:Teleport(game.PlaceId)
-    end)
-end
-
--- ============================================================
--- MONITOR PLAYER MASUK
--- ============================================================
-Players.PlayerAdded:Connect(function(player)
-    task.wait(5)  -- tunggu player fully loaded
-
-    -- Cek mod dulu
-    if AutoLeaveEnabled then
-        local isMod, keyword = IsModOrAdmin(player)
-        if isMod then
-            print("[AutoLeave] Mod detected:", player.Name, "(keyword:", keyword..")")
-            LeaveGame()
-            return
-        end
-    end
-
-    -- Auto ban
-    if AutoBanEnabled then
-        print("[AutoBan] Player masuk:", player.Name)
-        BanPlayer(player)
-    end
-    ForceRestoreUI()
-end)
-
--- Cek player yang sudah ada di server saat script load
-for _, player in pairs(Players:GetPlayers()) do
-    if player ~= LP then
-        if AutoLeaveEnabled then
-            local isMod = IsModOrAdmin(player)
-            if isMod then LeaveGame(); break end
-        end
-    end
+    table.sort(list)
+    return list
 end
 
 -- ============================================================
 -- UI
 -- ============================================================
-local MiscTab = getgenv().RaihjnMiscTab
-if not MiscTab then
-    warn("RaihjnMiscTab not found")
+
+local DropTab = getgenv().RaihjnAutoDropTab
+if not DropTab then
+    warn("DropTab not found")
     return
 end
 
@@ -166,81 +187,85 @@ if not Rayfield then
     return
 end
 
-MiscTab:CreateSection("Auto Ban")
+tab:CreateSection("Auto Drop Seed")
 
-MiscTab:CreateToggle({
-    Name         = "Auto Ban (ban semua yang masuk)",
-    CurrentValue = false,
-    Flag         = "AutoBanToggle",
-    Callback     = function(v)
-        AutoBanEnabled = v
-        print("[Config] AutoBan =", v)
-    end,
+-- Dropdown pilih seed
+local seedOptions = GetUniqueItemList()
+local selectedSeed = seedOptions[1] or ""
+local seedDropdown = tab:CreateDropdown({
+    Name = "Pilih Seed",
+    Options = seedOptions,
+    CurrentOption = selectedSeed,
+    Flag = "AutoDropSeedDropdown",
+    Callback = function(opt)
+        selectedSeed = opt
+        print("[AutoDrop] Seed dipilih:", selectedSeed)
+    end
 })
 
-MiscTab:CreateButton({
-    Name     = "Ban Semua Sekarang",
+-- Slider jumlah drop
+local dropAmount = 1
+local amountSlider = tab:CreateSlider({
+    Name = "Jumlah Drop",
+    Range = {1, 200},
+    Increment = 1,
+    Suffix = "item",
+    CurrentValue = 1,
+    Flag = "AutoDropAmountSlider",
+    Callback = function(val)
+        dropAmount = val
+    end
+})
+
+-- Tombol Drop
+tab:CreateButton({
+    Name = "Drop Seed Sekarang",
     Callback = function()
-        local count = 0
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LP then
-                BanPlayer(player)
-                task.wait(0.8)
-                count = count + 1
-            end
+        if not selectedSeed or selectedSeed == "" then
+            Rayfield:Notify({Title = "AutoDrop", Content = "Pilih seed terlebih dahulu!", Duration = 3})
+            return
         end
-        Rayfield:Notify({Title="Ban Selesai", Content="Banned "..count.." player", Duration=4})
-    end,
-})
 
-MiscTab:CreateInput({
-    Name                     = "Whitelist (username, pisah koma)",
-    PlaceholderText          = "Contoh: friend1,friend2",
-    RemoveTextAfterFocusLost = false,
-    Callback                 = function(text)
-        Whitelist = {}
-        for name in text:gmatch("[^,]+") do
-            local trimmed = name:match("^%s*(.-)%s*$")
-            if trimmed ~= "" then
-                table.insert(Whitelist, trimmed)
-                print("[Whitelist] Added:", trimmed)
-            end
+        local slot = GetSlotByItemID(selectedSeed)
+        if not slot then
+            Rayfield:Notify({Title = "AutoDrop", Content = "Seed tidak ditemukan di inventory!", Duration = 3})
+            return
         end
-        Rayfield:Notify({Title="Whitelist", Content=#Whitelist.." player di-whitelist", Duration=3})
-    end,
+
+        local tersedia = GetItemAmountByID(selectedSeed)
+        if tersedia < dropAmount then
+            Rayfield:Notify({Title = "AutoDrop", Content = string.format("Stok tidak cukup! Tersedia: %d", tersedia), Duration = 3})
+            return
+        end
+
+        local ok = DropItemLogic(selectedSeed, dropAmount)
+        if ok then
+            Rayfield:Notify({Title = "AutoDrop", Content = string.format("Berhasil drop %d %s", dropAmount, selectedSeed), Duration = 3})
+        else
+            Rayfield:Notify({Title = "AutoDrop", Content = "Gagal drop! Cek remote atau inventory.", Duration = 3})
+        end
+        ForceRestoreUI()
+    end
 })
 
--- Tombol statistik total banned
-Rayfield:Notify({
-    Title   = "Statistik Ban",
-    Content = "Total player di-ban: " .. TotalBanned,
-    Duration = 5,
-})
-
-MiscTab:CreateSection("Auto Mod Detector")
-
-MiscTab:CreateToggle({
-    Name         = "Auto Leave jika Mod Masuk",
-    CurrentValue = false,
-    Flag         = "AutoLeaveToggle",
-    Callback     = function(v)
-        AutoLeaveEnabled = v
-        print("[Config] AutoLeave =", v)
-    end,
-})
-
-MiscTab:CreateButton({
-    Name     = "Cek Player Di Server Sekarang",
+-- Tombol Refresh Inventory
+tab:CreateButton({
+    Name = "🔄 Refresh Daftar Seed",
     Callback = function()
-        local list = ""
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= LP then
-                local isMod, kw = IsModOrAdmin(p)
-                list = list .. "@"..p.Name..(isMod and " [MOD:"..kw.."]" or "").."\n"
-            end
-        end
-        if list == "" then list = "Tidak ada player lain" end
-        print("[PlayerList]\n"..list)
-        Rayfield:Notify({Title="Player Di Server", Content=list, Duration=8})
-    end,
+        local newOptions = GetUniqueItemList()
+        seedDropdown:Refresh(newOptions, newOptions[1] or "")
+        selectedSeed = newOptions[1] or ""
+        Rayfield:Notify({Title = "AutoDrop", Content = "Inventory diperbarui", Duration = 2})
+    end
 })
+
+-- Tombol Test (untuk debug, optional)
+tab:CreateButton({
+    Name = "Test ForceRestoreUI",
+    Callback = function()
+        ForceRestoreUI()
+        Rayfield:Notify({Title = "AutoDrop", Content = "ForceRestoreUI dijalankan", Duration = 2})
+    end
+})
+
+print("[AutoDrop] Script berhasil dimuat.")
