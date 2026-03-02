@@ -124,6 +124,16 @@ end
 -- UI
 -- ============================================================
 local MiscTab = getgenv().RaihjnMiscTab
+if not MiscTab then
+    warn("RaihjnMiscTab not found")
+    return
+end
+
+local Rayfield = getgenv().Rayfield
+if not Rayfield then
+    warn("Rayfield not found")
+    return
+end
 
 MiscTab:CreateSection("Auto Ban")
 
