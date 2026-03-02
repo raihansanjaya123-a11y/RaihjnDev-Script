@@ -1,3 +1,4 @@
+
 if getgenv().RaihjnWindow then
     pcall(function() getgenv().RaihjnWindow:Destroy() end)
     getgenv().RaihjnWindow = nil
@@ -719,10 +720,4 @@ local availableItems = ScanAvailableItems()
 })
 if not success then
     warn("Gagal memuat script: ".. tostring(err))
-    Rayfield:Notify({
-        Title    = "Raihjn Script",
-        Content  = "Gagal memuat script: ".. tostring(err),
-        Duration = 5,
-        Image    = 448332458,
-    })
 end
