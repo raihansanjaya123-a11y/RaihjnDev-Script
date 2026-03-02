@@ -580,18 +580,12 @@ end)
 -- ============================================================
 -- UI
 -- ============================================================
-local Window = Rayfield:CreateWindow({
-    Name                   = "Craft A World",
-    LoadingTitle           = "RaihjnDev",
-    LoadingSubtitle        = "By RaihjnDev | Rayfield Library",
-    DisableRayfieldPrompts = true,
-    ConfigurationSaving    = {Enable=false},
-    KeySystem              = false,
-})
 
-Rayfield:LoadConfiguration()
-
-local MainTab = Window:CreateTab("PABRIK", nil)
+local MainTab = getgenv().RaihjnTab
+if not MainTab then 
+    warn("RaihjnTab not found")
+    return
+end
 
 MainTab:CreateSection("Delay Settings")
 
@@ -725,23 +719,10 @@ MainTab:CreateButton({
     end,
 })
 
-MainTab:CreateSection("System")
-
-MainTab:CreateButton({
-    Name="Exit Script",
-    Callback=function()
-        getgenv().EnablePabrik = false
-        task.wait(0.3)
-        Rayfield:Destroy()
-    end,
-})
-
 -- FIX: Notify tanpa Actions (deprecated)
 Rayfield:Notify({
     Title    = "Raihjn Script",
     Content  = "Script Berhasil Di Load",
     Duration = 5,
     Image    = 448332458,
-
 })
-
