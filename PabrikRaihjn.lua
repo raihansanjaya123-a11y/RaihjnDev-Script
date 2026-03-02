@@ -1,5 +1,3 @@
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
 if getgenv().RaihjnWindow then
     pcall(function() getgenv().RaihjnWindow:Destroy() end)
     getgenv().RaihjnWindow = nil
@@ -581,7 +579,7 @@ end)
 -- UI
 -- ============================================================
 local success, err = pcall(function()
-    local Window = getgenv().RaihjnWindow
+
     local MainTab = getgenv().RaihjnTab
     if not MainTab then 
         warn("RaihjnTab not found")
