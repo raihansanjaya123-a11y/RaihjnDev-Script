@@ -1,7 +1,8 @@
--- ============================================================
--- SCRIPT PABRIK (LENGKAP - TANPA CREATE WINDOW)
--- ============================================================
 
+if getgenv().RaihjnWindow then
+    pcall(function() getgenv().RaihjnWindow:Destroy() end)
+    getgenv().RaihjnWindow = nil
+end
 if getgenv().RaihjnHeartbeatPabrik then
     getgenv().RaihjnHeartbeatPabrik:Disconnect()
     getgenv().RaihjnHeartbeatPabrik = nil
@@ -55,7 +56,7 @@ local UIManager
 pcall(function() UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager")) end)
 
 -- ============================================================
--- INVENTORY
+-- INVENTORY - satu fungsi untuk semua keperluan
 -- ============================================================
 local function GetAllItem()
     local results = {}
@@ -104,6 +105,7 @@ local function GetAllItem()
     return results
 end
 
+-- FIX: GetSlotByItemID pakai GetAllItem() bukan InventoryMod.Stacks langsung
 local function GetSlotByItemID(targetID)
     if not targetID or targetID == "" then return nil end
     targetID = tostring(targetID)
@@ -153,6 +155,7 @@ local function GetMyPosition()
         math.floor(h.Position.Y / getgenv().GridSize + 0.5)
 end
 
+-- FIX: SetHitBoxPos tidak re-require PlayerMovement setiap call (lambat!)
 local function SetHitBoxPos(x, y)
     local h = GetMyHitbox()
     if not h then return end
@@ -170,6 +173,7 @@ local function SetHitBoxPos(x, y)
     end
 end
 
+-- FIX: walkToGrid - tidak ada duplikat call, lock posisi setelah sampai
 local function walkToGrid(targetX, targetY)
     local cx, cy = GetMyPosition()
     while cx ~= targetX or cy ~= targetY do
@@ -312,6 +316,7 @@ local function Doplant(gx, gy, slot)
     end
 end
 
+-- FIX: DoBreak - re-lock posisi setiap hit supaya tidak blink
 local function DoBreak(gx, gy)
     local v2 = Vector2.new(gx, gy)
     for _ = 1, getgenv().HitCount do
@@ -323,7 +328,7 @@ local function DoBreak(gx, gy)
 end
 
 -- ============================================================
--- MAIN LOOP (LENGKAP)
+-- MAIN LOOP
 -- ============================================================
 task.spawn(function()
     while true do
@@ -336,6 +341,7 @@ task.spawn(function()
         end
 
         -- CEK AWAL: kalau block sudah lebih dari threshold, langsung farm block dulu
+        -- skip plant & harvest, setelah selesai baru siklus normal
         local blockAmtAwal = GetItemAmountByID(getgenv().SelectedBlock)
         if blockAmtAwal > getgenv().BlockThreshold then
             print("[Awal] Block sudah banyak ("..blockAmtAwal.."), langsung farm block dulu, skip plant/harvest")
@@ -422,7 +428,7 @@ task.spawn(function()
                 ForceRestoreUI()
             end
 
-            continue
+            continue  -- balik ke loop, mulai plant
         end
 
         -- FASE 1: PLANTING
@@ -465,9 +471,10 @@ task.spawn(function()
             if not getgenv().EnablePabrik then break end
             walkToGrid(point.X, point.Y)
             if not getgenv().EnablePabrik then break end
-            DoBreak(point.X, point.Y)
+            DoBreak(point.X, point.Y)  -- break di tempat, tidak jalan lagi
         end
 
+        -- FIX: Sweep balik - pakai harvestPath reverse, bukan variable yang tidak ada
         if getgenv().EnablePabrik then
             print("[Harvest] Sweep balik pickup")
             for i = #harvestPath, 1, -1 do
@@ -570,146 +577,143 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- UI (Menggunakan tab dari loader)
+-- UI
 -- ============================================================
-local MainTab = getgenv().RaihjnTab
-if not MainTab then
-    warn("Tab tidak ditemukan! Pastikan loader dijalankan terlebih dahulu.")
-    return
-end
-
--- Bungkus dengan pcall untuk menangkap error
 local success, err = pcall(function()
+
+    local MainTab = getgenv().RaihjnTab
+    if not MainTab then 
+        warn("RaihjnTab not found")
+        return
+    end
+
     MainTab:CreateSection("Delay Settings")
 
     MainTab:CreateInput({
         Name="Plant Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().PlaceDelay=n end end,
-    })
+    Callback=function(t) local n=tonumber(t); if n then getgenv().PlaceDelay=n end end,
+})
     MainTab:CreateInput({
-        Name="Hit Count", PlaceholderText="3", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().HitCount=n end end,
-    })
+    Name="Hit Count", PlaceholderText="3", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().HitCount=n end end,
+})
     MainTab:CreateInput({
-        Name="Break Delay", PlaceholderText="0.15", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().BreakDelay=n end end,
-    })
+    Name="Break Delay", PlaceholderText="0.15", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().BreakDelay=n end end,
+})
     MainTab:CreateInput({
-        Name="Step Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().StepDelay=n end end,
-    })
+    Name="Step Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().StepDelay=n end end,
+})
     MainTab:CreateInput({
-        Name="Growth Time", PlaceholderText="Waktu tumbuh (detik)", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().GrowthTime=n end end,
-    })
+    Name="Growth Time", PlaceholderText="Waktu tumbuh (detik)", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().GrowthTime=n end end,
+})
 
     MainTab:CreateSection("Item Settings")
 
-    local availableItems = ScanAvailableItems()
+local availableItems = ScanAvailableItems()
 
     MainTab:CreateDropdown({
-        Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="BlockDropdown",
-        Callback=function(opt)
-            local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
-            getgenv().SelectedBlock = id
-            print("Block:", id, "slot:", GetSlotByItemID(id))
-            Rayfield:Notify({Title="Block Selected", Content=id, Duration=3})
-        end,
-    })
+    Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="BlockDropdown",
+    Callback=function(opt)
+        local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
+        getgenv().SelectedBlock = id
+        print("Block:", id, "slot:", GetSlotByItemID(id))
+        Rayfield:Notify({Title="Block Selected", Content=id, Duration=3})
+    end,
+})
 
     MainTab:CreateDropdown({
-        Name="Select Seed", Options=availableItems, CurrentOption=availableItems[1], Flag="SeedDropdown",
-        Callback=function(opt)
-            local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
-            getgenv().SelectedSeed = id
-            print("Seed:", id, "slot:", GetSlotByItemID(id))
-            Rayfield:Notify({Title="Seed Selected", Content=id, Duration=3})
-        end,
-    })
+    Name="Select Seed", Options=availableItems, CurrentOption=availableItems[1], Flag="SeedDropdown",
+    Callback=function(opt)
+        local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
+        getgenv().SelectedSeed = id
+        print("Seed:", id, "slot:", GetSlotByItemID(id))
+        Rayfield:Notify({Title="Seed Selected", Content=id, Duration=3})
+    end,
+})
 
     MainTab:CreateInput({
-        Name="Keep Seed Amount", PlaceholderText="Jumlah seed yang disimpan", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().KeepSeedAmt=n end end,
-    })
+    Name="Keep Seed Amount", PlaceholderText="Jumlah seed yang disimpan", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().KeepSeedAmt=n end end,
+})
     MainTab:CreateInput({
-        Name="Block Threshold", PlaceholderText="Jumlah block minimum sebelum farm", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().BlockThreshold=n end end,
-    })
+    Name="Block Threshold", PlaceholderText="Jumlah block minimum sebelum farm", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().BlockThreshold=n end end,
+})
 
     MainTab:CreateToggle({
-        Name="Enable Pabrik", CurrentValue=false, Flag="EnablePabrikToggle",
-        Callback=function(v) getgenv().EnablePabrik=v; print("EnablePabrik:", v) end,
-    })
+    Name="Enable Pabrik", CurrentValue=false, Flag="EnablePabrikToggle",
+    Callback=function(v) getgenv().EnablePabrik=v; print("EnablePabrik:", v) end,
+})
 
     MainTab:CreateSection("Farm Position")
 
     MainTab:CreateInput({
-        Name="Start X", PlaceholderText="X awal farm", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().PabrikStartX=n end end,
-    })
+    Name="Start X", PlaceholderText="X awal farm", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().PabrikStartX=n end end,
+})
     MainTab:CreateInput({
-        Name="End X", PlaceholderText="X akhir farm", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().PabrikEndX=n end end,
-    })
+    Name="End X", PlaceholderText="X akhir farm", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().PabrikEndX=n end end,
+})
     MainTab:CreateInput({
-        Name="Start Y", PlaceholderText="Y awal farm", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().PabrikStartY=n end end,
-    })
+    Name="Start Y", PlaceholderText="Y awal farm", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().PabrikStartY=n end end,
+})
     MainTab:CreateInput({
-        Name="End Y", PlaceholderText="Y akhir farm", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().PabrikEndY=n end end,
-    })
+    Name="End Y", PlaceholderText="Y akhir farm", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().PabrikEndY=n end end,
+})
 
     MainTab:CreateSection("Break Position")
 
     local BreakPosXInput = MainTab:CreateInput({
-        Name="Break Pos X", PlaceholderText="X berdiri saat farm block", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().BreakPosX=n end end,
-    })
+    Name="Break Pos X", PlaceholderText="X berdiri saat farm block", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().BreakPosX=n end end,
+})
     local BreakPosYInput = MainTab:CreateInput({
-        Name="Break Pos Y", PlaceholderText="Y berdiri saat farm block", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().BreakPosY=n end end,
-    })
+    Name="Break Pos Y", PlaceholderText="Y berdiri saat farm block", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().BreakPosY=n end end,
+})
     MainTab:CreateButton({
-        Name="Set Break Pos (Current)",
-        Callback=function()
-            local mh = GetMyHitbox()
-            if mh then
-                local bx = math.floor(mh.Position.X / getgenv().GridSize + 0.5)
-                local by = math.floor(mh.Position.Y / getgenv().GridSize + 0.5)
-                getgenv().BreakPosX=bx; getgenv().BreakPosY=by
-                BreakPosXInput:Set(tostring(bx)); BreakPosYInput:Set(tostring(by))
-                Rayfield:Notify({Title="Break Pos", Content="X:"..bx.." Y:"..by, Duration=3})
-            end
-        end,
-    })
+    Name="Set Break Pos (Current)",
+    Callback=function()
+        local mh = GetMyHitbox()
+        if mh then
+            local bx = math.floor(mh.Position.X / getgenv().GridSize + 0.5)
+            local by = math.floor(mh.Position.Y / getgenv().GridSize + 0.5)
+            getgenv().BreakPosX=bx; getgenv().BreakPosY=by
+            BreakPosXInput:Set(tostring(bx)); BreakPosYInput:Set(tostring(by))
+            Rayfield:Notify({Title="Break Pos", Content="X:"..bx.." Y:"..by, Duration=3})
+        end
+    end,
+})
 
     MainTab:CreateSection("Drop Position")
 
     local DropPosXInput = MainTab:CreateInput({
-        Name="Drop Pos X", PlaceholderText="X posisi drop", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().DropPosX=n end end,
-    })
+    Name="Drop Pos X", PlaceholderText="X posisi drop", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().DropPosX=n end end,
+})
     local DropPosYInput = MainTab:CreateInput({
-        Name="Drop Pos Y", PlaceholderText="Y posisi drop", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().DropPosY=n end end,
-    })
+    Name="Drop Pos Y", PlaceholderText="Y posisi drop", RemoveTextAfterFocusLost=false,
+    Callback=function(t) local n=tonumber(t); if n then getgenv().DropPosY=n end end,
+})
     MainTab:CreateButton({
-        Name="Set Drop Pos (Current)",
-        Callback=function()
-            local mh = GetMyHitbox()
-            if mh then
-                local dx = math.floor(mh.Position.X / getgenv().GridSize + 0.5)
-                local dy = math.floor(mh.Position.Y / getgenv().GridSize + 0.5)
-                getgenv().DropPosX=dx; getgenv().DropPosY=dy
-                DropPosXInput:Set(tostring(dx)); DropPosYInput:Set(tostring(dy))
-                Rayfield:Notify({Title="Drop Pos", Content="X:"..dx.." Y:"..dy, Duration=3})
-            end
-        end,
-    })
-end)
-
+    Name="Set Drop Pos (Current)",
+    Callback=function()
+        local mh = GetMyHitbox()
+        if mh then
+            local dx = math.floor(mh.Position.X / getgenv().GridSize + 0.5)
+            local dy = math.floor(mh.Position.Y / getgenv().GridSize + 0.5)
+            getgenv().DropPosX=dx; getgenv().DropPosY=dy
+            DropPosXInput:Set(tostring(dx)); DropPosYInput:Set(tostring(dy))
+            Rayfield:Notify({Title="Drop Pos", Content="X:"..dx.." Y:"..dy, Duration=3})
+        end
+    end,
+})
 if not success then
-    warn("Error saat membuat UI pabrik: " .. tostring(err))
+    warn("Gagal memuat script: ".. tostring(err))
 end
-
