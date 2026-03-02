@@ -587,10 +587,6 @@ local success, err = pcall(function()
         Callback=function(t) local n=tonumber(t); if n then getgenv().PlaceDelay=n end end,
     })
     MainTab:CreateInput({
-        Name="Plant Hit Count", PlaceholderText="2", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().PlantHitCount=n end end,
-    })
-    MainTab:CreateInput({
         Name="Hit Count", PlaceholderText="3", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().HitCount=n end end,
     })
@@ -716,3 +712,4 @@ end)
 if not success then
     warn("Error saat membuat UI pabrik: " .. tostring(err))
 end
+
