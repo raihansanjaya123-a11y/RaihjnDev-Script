@@ -579,8 +579,6 @@ end)
 -- ============================================================
 -- UI
 -- ============================================================
-local success, err = pcall(function()
-
     local MainTab = getgenv().RaihjnTab
     if not MainTab then 
         warn("RaihjnTab not found")
