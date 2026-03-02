@@ -585,6 +585,13 @@ end)
         return
     end
 
+    local Rayfield = getgenv().Rayfield
+    if not Rayfield then
+        warn("Rayfield not found")
+        return
+    end
+
+
     MainTab:CreateSection("Delay Settings")
 
     MainTab:CreateInput({
