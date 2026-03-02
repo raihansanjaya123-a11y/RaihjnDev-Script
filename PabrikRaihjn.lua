@@ -1,5 +1,3 @@
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
 if getgenv().RaihjnWindow then
     pcall(function() getgenv().RaihjnWindow:Destroy() end)
     getgenv().RaihjnWindow = nil
@@ -742,4 +740,5 @@ Rayfield:Notify({
     Content  = "Script Berhasil Di Load",
     Duration = 5,
     Image    = 448332458,
+
 })
