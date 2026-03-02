@@ -3,7 +3,9 @@ local LP         = Players.LocalPlayer
 local RS         = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
--- Remotes
+-- ============================================================
+-- REMOTES
+-- ============================================================
 local UIPromptEvent    = RS:WaitForChild("Managers"):WaitForChild("UIManager"):WaitForChild("UIPromptEvent")
 local PlayerInspect    = RS:WaitForChild("Remotes"):WaitForChild("PlayerInspectPlayer")
 
@@ -13,6 +15,7 @@ local PlayerInspect    = RS:WaitForChild("Remotes"):WaitForChild("PlayerInspectP
 local AutoBanEnabled   = false
 local AutoLeaveEnabled = false
 local Whitelist        = {}  -- username yang tidak di-ban
+local TotalBanned      = 0   -- total player yang berhasil di-ban
 
 -- Daftar keyword nama mod/admin (tambah sendiri)
 local ModKeywords = {
@@ -20,24 +23,34 @@ local ModKeywords = {
     "moderator", "helper", "support", "official"
 }
 
+-- UIManager (untuk ForceRestoreUI, opsional)
+local UIManager
+pcall(function() UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager")) end)
+
+-- ============================================================
+-- FUNGSI BANTU RESTORE UI (menutup prompt)
+-- ============================================================
 local function ForceRestoreUI()
     pcall(function()
         if UIManager then
-            if type(UIManager.ClosePrompt)=="function" then UIManager:ClosePrompt() end
-            if type(UIManager.ShowHUD)=="function"     then UIManager:ShowHUD() end
-            if type(UIManager.ShowUI)=="function"      then UIManager:ShowUI() end
+            if type(UIManager.ClosePrompt) == "function" then UIManager:ClosePrompt() end
+            if type(UIManager.ShowHUD) == "function"     then UIManager:ShowHUD() end
+            if type(UIManager.ShowUI) == "function"      then UIManager:ShowUI() end
         end
         for _, g in pairs(LP.PlayerGui:GetDescendants()) do
-            if g:IsA("Frame") and g.Name:lower():find("prompt") then g.Visible=false end
+            if g:IsA("Frame") and g.Name:lower():find("prompt") then
+                g.Visible = false
+            end
         end
     end)
 end
+
 -- ============================================================
 -- FUNGSI BAN
 -- ============================================================
 local function BanPlayer(player)
     if player == LP then return end  -- jangan ban diri sendiri
-    
+
     -- Cek whitelist
     for _, name in ipairs(Whitelist) do
         if player.Name:lower() == name:lower() then
@@ -47,11 +60,11 @@ local function BanPlayer(player)
     end
 
     print("[AutoBan] Banning:", player.Name)
-    
+
     -- Step 1: Open player inspect (set target)
     pcall(function() PlayerInspect:FireServer(player) end)
     task.wait(0.3)
-    
+
     -- Step 2: Fire ban
     pcall(function()
         UIPromptEvent:FireServer({
@@ -60,11 +73,15 @@ local function BanPlayer(player)
         })
         ForceRestoreUI()
     end)
-    
+
     task.wait(0.5)
+
+    -- Hitung total banned
+    TotalBanned = TotalBanned + 1
+
     Rayfield:Notify({
         Title   = "Auto Ban",
-        Content = "Banned: @"..player.Name,
+        Content = "Banned: @" .. player.Name,
         Duration = 4,
     })
 end
@@ -105,7 +122,7 @@ end
 -- ============================================================
 Players.PlayerAdded:Connect(function(player)
     task.wait(5)  -- tunggu player fully loaded
-    
+
     -- Cek mod dulu
     if AutoLeaveEnabled then
         local isMod, keyword = IsModOrAdmin(player)
@@ -115,7 +132,7 @@ Players.PlayerAdded:Connect(function(player)
             return
         end
     end
-    
+
     -- Auto ban
     if AutoBanEnabled then
         print("[AutoBan] Player masuk:", player.Name)
@@ -191,6 +208,13 @@ MiscTab:CreateInput({
         end
         Rayfield:Notify({Title="Whitelist", Content=#Whitelist.." player di-whitelist", Duration=3})
     end,
+})
+
+-- Tombol statistik total banned
+Rayfield:Notify({
+    Title   = "Statistik Ban",
+    Content = "Total player di-ban: " .. TotalBanned,
+    Duration = 5,
 })
 
 MiscTab:CreateSection("Auto Mod Detector")
