@@ -283,13 +283,36 @@ end
 
 local function ForceRestoreUI()
     pcall(function()
-        if UIManager then
-            if type(UIManager.ClosePrompt)=="function" then UIManager:ClosePrompt() end
-            if type(UIManager.ShowHUD)=="function"     then UIManager:ShowHUD() end
-            if type(UIManager.ShowUI)=="function"      then UIManager:ShowUI() end
+        if UIManager and type(UIManager.ClosePrompt) == "function" then UIManager:ClosePrompt() end
+        for _, gui in pairs(LP.PlayerGui:GetDescendants()) do
+            if gui:IsA("Frame") and string.find(string.lower(gui.Name), "prompt") then gui.Visible = false end
         end
-        for _, g in pairs(LP.PlayerGui:GetDescendants()) do
-            if g:IsA("Frame") and g.Name:lower():find("prompt") then g.Visible=false end
+    end)
+    task.wait(0.1)
+    pcall(function()
+        if UIManager then
+            if type(UIManager.ShowHUD) == "function" then UIManager:ShowHUD() end
+            if type(UIManager.ShowUI) == "function" then UIManager:ShowUI() end
+        end
+    end)
+    pcall(function()
+        local targetUIs = { "topbar", "gems", "playerui", "hotbar", "crosshair", "mainhud", "stats", "inventory", "backpack", "menu", "bottombar", "buttons" }
+        for _, gui in pairs(LP.PlayerGui:GetDescendants()) do
+            if gui:IsA("Frame") or gui:IsA("ScreenGui") or gui:IsA("ImageLabel") then
+                local gName = string.lower(gui.Name)
+                for _, tName in ipairs(targetUIs) do
+                    if string.find(gName, tName) and not string.find(gName, "prompt") then
+                        if gui:IsA("ScreenGui") then gui.Enabled = true else gui.Visible = true end
+                    end
+                end
+            end
+        end
+    end)
+    pcall(function()
+        for _, gui in pairs(LP.PlayerGui:GetDescendants()) do
+            if gui:IsA("TextButton") and string.find(string.lower(gui.Text), "drop") then
+                if gui.Parent then gui.Parent.Visible = true end
+            end
         end
     end)
 end
@@ -800,4 +823,3 @@ end)
 if not success then
     warn("Error saat membuat UI pabrik: " .. tostring(err))
 end
-
