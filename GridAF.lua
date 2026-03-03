@@ -1,42 +1,22 @@
-local function GetSelectedOffsets()
-    local offsets = {}
-    for key, v in pairs(getgenv().AFB_SelectedGrids) do
-        if v then
-            local ox, oy = key:match("^(-?%d+),(-?%d+)$")
-            ox = tonumber(ox)
-            oy = tonumber(oy)
-            if ox and oy then
-                table.insert(offsets, {ox = ox, oy = oy})
-            end
-        end
-    end
-    -- Sort: top-to-bottom, left-to-right
-    table.sort(offsets, function(a, b)
-        if a.oy ~= b.oy then return a.oy > b.oy end -- higher Y first (above)
-        return a.ox < b.ox
-    end)
-    return offsets
-end
+-- ============================================================
+-- GRID SELECTOR UI - VERSI EKSTERNAL
+-- ============================================================
+
+local UIS = game:GetService("UserInputService")
 
 local function CreateGridSelectorUI()
     if getgenv().AFGridGui then
         pcall(function() getgenv().AFGridGui:Destroy() end)
     end
 
-    local Rayfield = getgenv().
-    if not Rayfield then
-        warn("Rayfield not found")
-        return
-    end
-
-    -- == Colour tokens matching Rayfield ==
-    local C_BG      = Color3.fromRGB(12,  12,  14)   -- main window bg
-    local C_SURF    = Color3.fromRGB(20,  20,  24)   -- inner surface panels
-    local C_TOP     = Color3.fromRGB(17,  17,  20)   -- title bar
-    local C_ACC     = Color3.fromRGB(77,  120, 204)  -- blue accent
-    local C_ACC2    = Color3.fromRGB(50,  85,  160)  -- darker blue accent
-    local C_SEL     = Color3.fromRGB(46,  160, 90)   -- selected green
-    local C_SEL2    = Color3.fromRGB(28,  110, 58)   -- selected green border
+    -- == Colour tokens ==
+    local C_BG      = Color3.fromRGB(12,  12,  14)
+    local C_SURF    = Color3.fromRGB(20,  20,  24)
+    local C_TOP     = Color3.fromRGB(17,  17,  20)
+    local C_ACC     = Color3.fromRGB(77,  120, 204)
+    local C_ACC2    = Color3.fromRGB(50,  85,  160)
+    local C_SEL     = Color3.fromRGB(46,  160, 90)
+    local C_SEL2    = Color3.fromRGB(28,  110, 58)
     local C_TXT     = Color3.fromRGB(230, 230, 235)
     local C_SUB     = Color3.fromRGB(140, 140, 155)
     local C_CELL    = Color3.fromRGB(25,  25,  32)
@@ -86,13 +66,11 @@ local function CreateGridSelectorUI()
     titleBar.BackgroundColor3 = C_TOP
     titleBar.BorderSizePixel = 0
     Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 10)
-    -- flatten bottom corners
     local tbFix = Instance.new("Frame", titleBar)
     tbFix.Size = UDim2.new(1, 0, 0, 10)
     tbFix.Position = UDim2.new(0, 0, 1, -10)
     tbFix.BackgroundColor3 = C_TOP; tbFix.BorderSizePixel = 0
 
-    -- left accent stripe
     local stripe = Instance.new("Frame", titleBar)
     stripe.Size = UDim2.new(0, 3, 0, 22)
     stripe.Position = UDim2.new(0, 12, 0.5, -11)
@@ -176,7 +154,7 @@ local function CreateGridSelectorUI()
 
     task.spawn(function()
         while getgenv().AFGridGui and getgenv().AFGridGui.Parent do
-            local held = GetHeldItemID()
+            local held = getgenv().GetHeldItemID and getgenv().GetHeldItemID()
             if held then
                 infoLabel.Text = "Block: " .. held
                 infoLabel.TextColor3 = Color3.fromRGB(90, 210, 115)
@@ -190,7 +168,7 @@ local function CreateGridSelectorUI()
 
     -- ── Grid outer panel ──
     local CELL = 44; local PAD = 4
-    local GSIZE = 5*CELL + 4*PAD  -- 236
+    local GSIZE = 5*CELL + 4*PAD
 
     local gridPanel = Instance.new("Frame", mainFrame)
     gridPanel.Size = UDim2.new(0, GSIZE+16, 0, GSIZE+16)
@@ -262,7 +240,7 @@ local function CreateGridSelectorUI()
                     UpdateCell()
                     local n = 0
                     for _,v in pairs(getgenv().AFB_SelectedGrids) do if v then n = n+1 end end
-                    print("[AutoFarm] Grid toggled:", key, "| Total:", n)
+                    print("[Grid] Toggled:", key, "| Total:", n)
                 end)
                 cell.MouseEnter:Connect(function()
                     if getgenv().AFB_SelectedGrids[key] then
@@ -349,3 +327,5 @@ local function CreateGridSelectorUI()
 
     return mainFrame
 end
+
+getgenv().CreateGridSelectorUI = CreateGridSelectorUI
