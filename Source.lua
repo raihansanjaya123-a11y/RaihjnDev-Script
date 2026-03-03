@@ -1,253 +1,164 @@
---// RaihjnDev Ocean Premium UI
+--// Ocean Glass Sidebar UI - RemingtonHub
 
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
 
-local RHub = {}
-RHub.__index = RHub
+--// ScreenGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "RemingtonHub"
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
---// CONFIG
-local WINDOW_SIZE = Vector2.new(780,480)
-local SIDEBAR_WIDTH = 190
-local RADIUS = 14
+--// Main Window
+local Main = Instance.new("Frame")
+Main.Size = UDim2.new(0,780,0,480)
+Main.Position = UDim2.new(0.5,-390,0.5,-240)
+Main.BackgroundColor3 = Color3.fromRGB(15,32,39)
+Main.BorderSizePixel = 0
+Main.Parent = ScreenGui
 
-local COLORS = {
-    Background = Color3.fromRGB(15,18,24),
-    Glass = Color3.fromRGB(25,30,40),
-    Accent1 = Color3.fromRGB(64,182,255),
-    Accent2 = Color3.fromRGB(0,140,220),
-    Text = Color3.fromRGB(235,240,255),
-    SubText = Color3.fromRGB(170,185,210)
-}
+local MainCorner = Instance.new("UICorner",Main)
+MainCorner.CornerRadius = UDim.new(0,16)
 
---// Utility
-local function Tween(obj,props,time)
-    TweenService:Create(obj,TweenInfo.new(time,Enum.EasingStyle.Quart,Enum.EasingDirection.Out),props):Play()
+local MainStroke = Instance.new("UIStroke",Main)
+MainStroke.Color = Color3.fromRGB(255,255,255)
+MainStroke.Transparency = 0.9
+MainStroke.Thickness = 1
+
+-- Shadow feel
+Main.BackgroundTransparency = 0.05
+
+--// Sidebar (Glassy)
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0,190,1,0)
+Sidebar.BackgroundColor3 = Color3.fromRGB(20,47,59)
+Sidebar.BackgroundTransparency = 0.15
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = Main
+
+local SideCorner = Instance.new("UICorner",Sidebar)
+SideCorner.CornerRadius = UDim.new(0,16)
+
+--// Logo
+local Logo = Instance.new("TextLabel")
+Logo.Text = "RemingtonHub"
+Logo.Font = Enum.Font.GothamBold
+Logo.TextSize = 16
+Logo.TextColor3 = Color3.fromRGB(255,255,255)
+Logo.BackgroundTransparency = 1
+Logo.Size = UDim2.new(1,0,0,60)
+Logo.Parent = Sidebar
+
+--// Tab Container
+local TabContainer = Instance.new("Frame")
+TabContainer.Position = UDim2.new(0,0,0,70)
+TabContainer.Size = UDim2.new(1,0,1,-90)
+TabContainer.BackgroundTransparency = 1
+TabContainer.Parent = Sidebar
+
+local UIList = Instance.new("UIListLayout",TabContainer)
+UIList.Padding = UDim.new(0,8)
+
+-- Cyan Accent
+local AccentColor = Color3.fromRGB(56,189,248)
+
+local function CreateTabButton(text)
+	local Button = Instance.new("TextButton")
+	Button.Size = UDim2.new(1,-20,0,42)
+	Button.Position = UDim2.new(0,10,0,0)
+	Button.BackgroundColor3 = Color3.fromRGB(255,255,255)
+	Button.BackgroundTransparency = 0.95
+	Button.Text = text
+	Button.Font = Enum.Font.GothamSemibold
+	Button.TextSize = 14
+	Button.TextColor3 = Color3.fromRGB(220,230,235)
+	Button.AutoButtonColor = false
+	Button.Parent = TabContainer
+	
+	local Corner = Instance.new("UICorner",Button)
+	Corner.CornerRadius = UDim.new(0,12)
+	
+	-- Active Indicator
+	local Indicator = Instance.new("Frame")
+	Indicator.Size = UDim2.new(0,3,0.7,0)
+	Indicator.Position = UDim2.new(0,0,0.15,0)
+	Indicator.BackgroundColor3 = AccentColor
+	Indicator.Visible = false
+	Indicator.BorderSizePixel = 0
+	Indicator.Parent = Button
+	
+	local IndCorner = Instance.new("UICorner",Indicator)
+	IndCorner.CornerRadius = UDim.new(1,0)
+
+	-- Hover animation
+	Button.MouseEnter:Connect(function()
+		TweenService:Create(Button,TweenInfo.new(0.15),{
+			BackgroundTransparency = 0.9
+		}):Play()
+	end)
+	
+	Button.MouseLeave:Connect(function()
+		if not Indicator.Visible then
+			TweenService:Create(Button,TweenInfo.new(0.15),{
+				BackgroundTransparency = 0.95
+			}):Play()
+		end
+	end)
+	
+	Button.MouseButton1Click:Connect(function()
+		for _,v in pairs(TabContainer:GetChildren()) do
+			if v:IsA("TextButton") then
+				v.BackgroundTransparency = 0.95
+				if v:FindFirstChildOfClass("Frame") then
+					v:FindFirstChildOfClass("Frame").Visible = false
+				end
+			end
+		end
+		
+		Indicator.Visible = true
+		
+		TweenService:Create(Button,TweenInfo.new(0.2,Enum.EasingStyle.Quad),{
+			BackgroundTransparency = 0.88
+		}):Play()
+	end)
 end
 
-local function Corner(obj,r)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0,r)
-    c.Parent = obj
-end
+CreateTabButton("Main")
+CreateTabButton("Player")
+CreateTabButton("Visual")
+CreateTabButton("Settings")
 
-local function Stroke(obj,thickness,color,transparency)
-    local s = Instance.new("UIStroke")
-    s.Thickness = thickness
-    s.Color = color
-    s.Transparency = transparency
-    s.Parent = obj
-end
+--// Content Area
+local Content = Instance.new("Frame")
+Content.Position = UDim2.new(0,190,0,0)
+Content.Size = UDim2.new(1,-190,1,0)
+Content.BackgroundTransparency = 1
+Content.Parent = Main
 
---// Create Window
-function RHub:CreateWindow(cfg)
-    local player = Players.LocalPlayer
-    
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "RaihjnDevOcean"
-    gui.ResetOnSpawn = false
-    gui.Parent = player:WaitForChild("PlayerGui")
-    
-    -- MAIN
-    local Main = Instance.new("Frame",gui)
-    Main.Size = UDim2.fromOffset(WINDOW_SIZE.X,WINDOW_SIZE.Y)
-    Main.Position = UDim2.new(0.5,-WINDOW_SIZE.X/2,0.5,-WINDOW_SIZE.Y/2)
-    Main.BackgroundColor3 = COLORS.Background
-    Main.BackgroundTransparency = 0.05
-    Corner(Main,RADIUS)
-    Stroke(Main,1,COLORS.Accent1,0.6)
-    
-    -- Glow layer
-    local Glow = Instance.new("Frame",Main)
-    Glow.Size = UDim2.new(1,20,1,20)
-    Glow.Position = UDim2.new(0,-10,0,-10)
-    Glow.BackgroundColor3 = COLORS.Accent1
-    Glow.BackgroundTransparency = 0.85
-    Glow.ZIndex = 0
-    Corner(Glow,RADIUS+4)
-    
-    -- Gradient overlay
-    local Gradient = Instance.new("UIGradient",Main)
-    Gradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0,COLORS.Glass),
-        ColorSequenceKeypoint.new(1,COLORS.Background)
-    }
-    
-    -- Drag system
-    local dragging, dragInput, dragStart, startPos
-    
-    Main.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = Main.Position
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            Main.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
-        end
-    end)
-    
-    -- Sidebar
-    local Sidebar = Instance.new("Frame",Main)
-    Sidebar.Size = UDim2.new(0,SIDEBAR_WIDTH,1,0)
-    Sidebar.BackgroundColor3 = COLORS.Glass
-    Sidebar.BackgroundTransparency = 0.1
-    Corner(Sidebar,RADIUS)
-    
-    local SBGradient = Instance.new("UIGradient",Sidebar)
-    SBGradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0,Color3.fromRGB(25,30,40)),
-        ColorSequenceKeypoint.new(1,Color3.fromRGB(18,22,30))
-    }
-    
-    local TabList = Instance.new("UIListLayout",Sidebar)
-    TabList.Padding = UDim.new(0,10)
-    TabList.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    TabList.VerticalAlignment = Enum.VerticalAlignment.Top
-    
-    -- Content
-    local Content = Instance.new("Frame",Main)
-    Content.Position = UDim2.new(0,SIDEBAR_WIDTH+15,0,15)
-    Content.Size = UDim2.new(1,-(SIDEBAR_WIDTH+30),1,-30)
-    Content.BackgroundTransparency = 1
-    
-    -- Window API
-    local Window = {}
-    local CurrentPage
-    
-    function Window:CreateTab(name,icon)
-        local TabButton = Instance.new("TextButton",Sidebar)
-        TabButton.Size = UDim2.new(0,SIDEBAR_WIDTH-20,0,45)
-        TabButton.Text = name
-        TabButton.TextColor3 = COLORS.Text
-        TabButton.Font = Enum.Font.GothamSemibold
-        TabButton.TextSize = 14
-        TabButton.BackgroundColor3 = Color3.fromRGB(30,36,46)
-        TabButton.BackgroundTransparency = 0.3
-        Corner(TabButton,12)
-        
-        local Icon = Instance.new("ImageLabel",TabButton)
-        Icon.Size = UDim2.fromOffset(18,18)
-        Icon.Position = UDim2.new(0,12,0.5,-9)
-        Icon.BackgroundTransparency = 1
-        Icon.Image = icon or ""
-        
-        TabButton.TextXAlignment = Enum.TextXAlignment.Center
-        
-        local Page = Instance.new("ScrollingFrame",Content)
-        Page.Size = UDim2.new(1,0,1,0)
-        Page.CanvasSize = UDim2.new(0,0,0,0)
-        Page.ScrollBarImageTransparency = 0.7
-        Page.Visible = false
-        Page.BackgroundTransparency = 1
-        
-        local Layout = Instance.new("UIListLayout",Page)
-        Layout.Padding = UDim.new(0,12)
-        
-        Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            Page.CanvasSize = UDim2.new(0,0,0,Layout.AbsoluteContentSize.Y+10)
-        end)
-        
-        TabButton.MouseButton1Click:Connect(function()
-            if CurrentPage then
-                Tween(CurrentPage,{BackgroundTransparency=1},0.2)
-                CurrentPage.Visible = false
-            end
-            
-            Page.Visible = true
-            Page.BackgroundTransparency = 1
-            Tween(Page,{BackgroundTransparency=0},0.3)
-            
-            CurrentPage = Page
-        end)
-        
-        local Tab = {}
-        
-        function Tab:CreateButton(text,callback)
-            local Btn = Instance.new("TextButton",Page)
-            Btn.Size = UDim2.new(1,-10,0,45)
-            Btn.Text = text
-            Btn.Font = Enum.Font.Gotham
-            Btn.TextSize = 14
-            Btn.TextColor3 = COLORS.Text
-            Btn.BackgroundColor3 = Color3.fromRGB(30,36,46)
-            Corner(Btn,12)
-            Stroke(Btn,1,COLORS.Accent1,0.7)
-            
-            Btn.MouseEnter:Connect(function()
-                Tween(Btn,{BackgroundColor3=Color3.fromRGB(40,50,65)},0.2)
-            end)
-            Btn.MouseLeave:Connect(function()
-                Tween(Btn,{BackgroundColor3=Color3.fromRGB(30,36,46)},0.2)
-            end)
-            
-            Btn.MouseButton1Click:Connect(function()
-                if callback then callback() end
-            end)
-        end
-        
-        function Tab:CreateToggle(text,callback)
-            local Holder = Instance.new("Frame",Page)
-            Holder.Size = UDim2.new(1,-10,0,45)
-            Holder.BackgroundColor3 = Color3.fromRGB(30,36,46)
-            Corner(Holder,12)
-            Stroke(Holder,1,COLORS.Accent1,0.7)
-            
-            local Label = Instance.new("TextLabel",Holder)
-            Label.Size = UDim2.new(0.7,0,1,0)
-            Label.BackgroundTransparency = 1
-            Label.Text = text
-            Label.TextColor3 = COLORS.Text
-            Label.Font = Enum.Font.Gotham
-            Label.TextSize = 14
-            
-            local ToggleBtn = Instance.new("Frame",Holder)
-            ToggleBtn.Size = UDim2.fromOffset(50,24)
-            ToggleBtn.Position = UDim2.new(1,-70,0.5,-12)
-            ToggleBtn.BackgroundColor3 = Color3.fromRGB(20,25,35)
-            Corner(ToggleBtn,12)
-            
-            local Circle = Instance.new("Frame",ToggleBtn)
-            Circle.Size = UDim2.fromOffset(20,20)
-            Circle.Position = UDim2.new(0,2,0.5,-10)
-            Circle.BackgroundColor3 = COLORS.SubText
-            Corner(Circle,10)
-            
-            local State = false
-            
-            Holder.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    State = not State
-                    if State then
-                        Tween(Circle,{Position=UDim2.new(1,-22,0.5,-10),BackgroundColor3=COLORS.Accent1},0.25)
-                    else
-                        Tween(Circle,{Position=UDim2.new(0,2,0.5,-10),BackgroundColor3=COLORS.SubText},0.25)
-                    end
-                    if callback then callback(State) end
-                end
-            end)
-        end
-        
-        return Tab
-    end
-    
-    return Window
-end
+-- Header
+local Header = Instance.new("TextLabel")
+Header.Text = "Dashboard"
+Header.Font = Enum.Font.GothamBold
+Header.TextSize = 22
+Header.TextColor3 = Color3.fromRGB(255,255,255)
+Header.BackgroundTransparency = 1
+Header.Position = UDim2.new(0,30,0,30)
+Header.Size = UDim2.new(0,300,0,30)
+Header.Parent = Content
 
-return RHub
+-- Card
+local Card = Instance.new("Frame")
+Card.Position = UDim2.new(0,30,0,80)
+Card.Size = UDim2.new(1,-60,0,250)
+Card.BackgroundColor3 = Color3.fromRGB(255,255,255)
+Card.BackgroundTransparency = 0.9
+Card.BorderSizePixel = 0
+Card.Parent = Content
+
+local CardCorner = Instance.new("UICorner",Card)
+CardCorner.CornerRadius = UDim.new(0,14)
+
+local CardStroke = Instance.new("UIStroke",Card)
+CardStroke.Transparency = 0.85
+CardStroke.Color = Color3.fromRGB(255,255,255)
+CardStroke.Thickness = 1
