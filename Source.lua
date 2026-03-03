@@ -1,164 +1,175 @@
---// Ocean Glass Sidebar UI - RemingtonHub
+--// Calm macOS Utility Panel - RemingtonHub
 
 local TweenService = game:GetService("TweenService")
-local UIS = game:GetService("UserInputService")
 
 --// ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "RemingtonHub"
+ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = game.CoreGui
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
---// Main Window
-local Main = Instance.new("Frame")
-Main.Size = UDim2.new(0,780,0,480)
-Main.Position = UDim2.new(0.5,-390,0.5,-240)
-Main.BackgroundColor3 = Color3.fromRGB(15,32,39)
-Main.BorderSizePixel = 0
-Main.Parent = ScreenGui
+--// Window
+local Window = Instance.new("Frame")
+Window.Size = UDim2.new(0,780,0,480)
+Window.Position = UDim2.new(0.5,-390,0.5,-240)
+Window.BackgroundColor3 = Color3.fromRGB(22,24,29) -- #16181D
+Window.BorderSizePixel = 0
+Window.Parent = ScreenGui
 
-local MainCorner = Instance.new("UICorner",Main)
-MainCorner.CornerRadius = UDim.new(0,16)
+local WindowCorner = Instance.new("UICorner")
+WindowCorner.CornerRadius = UDim.new(0,18)
+WindowCorner.Parent = Window
 
-local MainStroke = Instance.new("UIStroke",Main)
-MainStroke.Color = Color3.fromRGB(255,255,255)
-MainStroke.Transparency = 0.9
-MainStroke.Thickness = 1
+--// Soft Shadow Feel
+Window.BackgroundTransparency = 0
 
--- Shadow feel
-Main.BackgroundTransparency = 0.05
-
---// Sidebar (Glassy)
+--// Sidebar
 local Sidebar = Instance.new("Frame")
-Sidebar.Size = UDim2.new(0,190,1,0)
-Sidebar.BackgroundColor3 = Color3.fromRGB(20,47,59)
-Sidebar.BackgroundTransparency = 0.15
+Sidebar.Size = UDim2.new(0,200,1,0)
+Sidebar.BackgroundColor3 = Color3.fromRGB(28,31,38) -- #1C1F26
 Sidebar.BorderSizePixel = 0
-Sidebar.Parent = Main
+Sidebar.Parent = Window
 
-local SideCorner = Instance.new("UICorner",Sidebar)
-SideCorner.CornerRadius = UDim.new(0,16)
+local SidebarPadding = Instance.new("UIPadding")
+SidebarPadding.PaddingTop = UDim.new(0,24)
+SidebarPadding.PaddingLeft = UDim.new(0,24)
+SidebarPadding.PaddingRight = UDim.new(0,24)
+Sidebar.Parent = Sidebar
 
---// Logo
-local Logo = Instance.new("TextLabel")
-Logo.Text = "RemingtonHub"
-Logo.Font = Enum.Font.GothamBold
-Logo.TextSize = 16
-Logo.TextColor3 = Color3.fromRGB(255,255,255)
-Logo.BackgroundTransparency = 1
-Logo.Size = UDim2.new(1,0,0,60)
-Logo.Parent = Sidebar
+--// App Title
+local AppTitle = Instance.new("TextLabel")
+AppTitle.Size = UDim2.new(1,0,0,24)
+AppTitle.BackgroundTransparency = 1
+AppTitle.Text = "RemingtonHub"
+AppTitle.Font = Enum.Font.GothamBold
+AppTitle.TextSize = 16
+AppTitle.TextXAlignment = Enum.TextXAlignment.Left
+AppTitle.TextColor3 = Color3.fromRGB(255,255,255)
+AppTitle.Parent = Sidebar
 
 --// Tab Container
 local TabContainer = Instance.new("Frame")
-TabContainer.Position = UDim2.new(0,0,0,70)
-TabContainer.Size = UDim2.new(1,0,1,-90)
+TabContainer.Size = UDim2.new(1,0,1,-60)
+TabContainer.Position = UDim2.new(0,0,0,40)
 TabContainer.BackgroundTransparency = 1
 TabContainer.Parent = Sidebar
 
-local UIList = Instance.new("UIListLayout",TabContainer)
-UIList.Padding = UDim.new(0,8)
+local TabList = Instance.new("UIListLayout")
+TabList.Padding = UDim.new(0,8)
+TabList.Parent = TabContainer
 
--- Cyan Accent
-local AccentColor = Color3.fromRGB(56,189,248)
+--// Accent Color
+local Accent = Color3.fromRGB(59,164,247)
 
-local function CreateTabButton(text)
-	local Button = Instance.new("TextButton")
-	Button.Size = UDim2.new(1,-20,0,42)
-	Button.Position = UDim2.new(0,10,0,0)
-	Button.BackgroundColor3 = Color3.fromRGB(255,255,255)
-	Button.BackgroundTransparency = 0.95
-	Button.Text = text
-	Button.Font = Enum.Font.GothamSemibold
-	Button.TextSize = 14
-	Button.TextColor3 = Color3.fromRGB(220,230,235)
-	Button.AutoButtonColor = false
-	Button.Parent = TabContainer
+local function CreateTab(text)
+	local Tab = Instance.new("TextButton")
+	Tab.Size = UDim2.new(1,0,0,36)
+	Tab.BackgroundColor3 = Color3.fromRGB(28,31,38)
+	Tab.BackgroundTransparency = 1
+	Tab.Text = ""
+	Tab.AutoButtonColor = false
+	Tab.Parent = TabContainer
 	
-	local Corner = Instance.new("UICorner",Button)
-	Corner.CornerRadius = UDim.new(0,12)
+	local Corner = Instance.new("UICorner")
+	Corner.CornerRadius = UDim.new(0,10)
+	Corner.Parent = Tab
 	
-	-- Active Indicator
-	local Indicator = Instance.new("Frame")
-	Indicator.Size = UDim2.new(0,3,0.7,0)
-	Indicator.Position = UDim2.new(0,0,0.15,0)
-	Indicator.BackgroundColor3 = AccentColor
-	Indicator.Visible = false
-	Indicator.BorderSizePixel = 0
-	Indicator.Parent = Button
+	-- Icon Placeholder
+	local Icon = Instance.new("TextLabel")
+	Icon.Size = UDim2.new(0,20,0,20)
+	Icon.Position = UDim2.new(0,0,0.5,-10)
+	Icon.BackgroundTransparency = 1
+	Icon.Text = "●"
+	Icon.Font = Enum.Font.GothamBold
+	Icon.TextSize = 12
+	Icon.TextColor3 = Color3.fromRGB(111,119,130)
+	Icon.Parent = Tab
 	
-	local IndCorner = Instance.new("UICorner",Indicator)
-	IndCorner.CornerRadius = UDim.new(1,0)
-
-	-- Hover animation
-	Button.MouseEnter:Connect(function()
-		TweenService:Create(Button,TweenInfo.new(0.15),{
+	-- Label
+	local Label = Instance.new("TextLabel")
+	Label.Size = UDim2.new(1,-30,1,0)
+	Label.Position = UDim2.new(0,30,0,0)
+	Label.BackgroundTransparency = 1
+	Label.Text = text
+	Label.Font = Enum.Font.GothamMedium
+	Label.TextSize = 14
+	Label.TextXAlignment = Enum.TextXAlignment.Left
+	Label.TextColor3 = Color3.fromRGB(111,119,130)
+	Label.Parent = Tab
+	
+	-- Hover
+	Tab.MouseEnter:Connect(function()
+		TweenService:Create(Tab,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{
 			BackgroundTransparency = 0.9
 		}):Play()
 	end)
 	
-	Button.MouseLeave:Connect(function()
-		if not Indicator.Visible then
-			TweenService:Create(Button,TweenInfo.new(0.15),{
-				BackgroundTransparency = 0.95
-			}):Play()
-		end
+	Tab.MouseLeave:Connect(function()
+		TweenService:Create(Tab,TweenInfo.new(0.18,Enum.EasingStyle.Quint),{
+			BackgroundTransparency = 1
+		}):Play()
 	end)
 	
-	Button.MouseButton1Click:Connect(function()
+	-- Active State
+	Tab.MouseButton1Click:Connect(function()
 		for _,v in pairs(TabContainer:GetChildren()) do
 			if v:IsA("TextButton") then
-				v.BackgroundTransparency = 0.95
-				if v:FindFirstChildOfClass("Frame") then
-					v:FindFirstChildOfClass("Frame").Visible = false
+				v.BackgroundTransparency = 1
+				for _,child in pairs(v:GetChildren()) do
+					if child:IsA("TextLabel") then
+						child.TextColor3 = Color3.fromRGB(111,119,130)
+					end
 				end
 			end
 		end
 		
-		Indicator.Visible = true
-		
-		TweenService:Create(Button,TweenInfo.new(0.2,Enum.EasingStyle.Quad),{
-			BackgroundTransparency = 0.88
+		TweenService:Create(Tab,TweenInfo.new(0.22,Enum.EasingStyle.Quint),{
+			BackgroundColor3 = Color3.fromRGB(32,36,44),
+			BackgroundTransparency = 0
 		}):Play()
+		
+		Label.TextColor3 = Color3.fromRGB(255,255,255)
+		Icon.TextColor3 = Accent
 	end)
 end
 
-CreateTabButton("Main")
-CreateTabButton("Player")
-CreateTabButton("Visual")
-CreateTabButton("Settings")
+CreateTab("Dashboard")
+CreateTab("Player")
+CreateTab("Visual")
+CreateTab("Settings")
 
 --// Content Area
 local Content = Instance.new("Frame")
-Content.Position = UDim2.new(0,190,0,0)
-Content.Size = UDim2.new(1,-190,1,0)
-Content.BackgroundTransparency = 1
-Content.Parent = Main
+Content.Size = UDim2.new(1,-200,1,0)
+Content.Position = UDim2.new(0,200,0,0)
+Content.BackgroundColor3 = Color3.fromRGB(32,36,44)
+Content.BorderSizePixel = 0
+Content.Parent = Window
 
--- Header
+local ContentPadding = Instance.new("UIPadding")
+ContentPadding.PaddingTop = UDim.new(0,32)
+ContentPadding.PaddingLeft = UDim.new(0,40)
+ContentPadding.PaddingRight = UDim.new(0,40)
+Content.Parent = Content
+
+--// Header
 local Header = Instance.new("TextLabel")
+Header.Size = UDim2.new(1,0,0,30)
+Header.BackgroundTransparency = 1
 Header.Text = "Dashboard"
 Header.Font = Enum.Font.GothamBold
 Header.TextSize = 22
 Header.TextColor3 = Color3.fromRGB(255,255,255)
-Header.BackgroundTransparency = 1
-Header.Position = UDim2.new(0,30,0,30)
-Header.Size = UDim2.new(0,300,0,30)
+Header.TextXAlignment = Enum.TextXAlignment.Left
 Header.Parent = Content
 
--- Card
-local Card = Instance.new("Frame")
-Card.Position = UDim2.new(0,30,0,80)
-Card.Size = UDim2.new(1,-60,0,250)
-Card.BackgroundColor3 = Color3.fromRGB(255,255,255)
-Card.BackgroundTransparency = 0.9
-Card.BorderSizePixel = 0
-Card.Parent = Content
-
-local CardCorner = Instance.new("UICorner",Card)
-CardCorner.CornerRadius = UDim.new(0,14)
-
-local CardStroke = Instance.new("UIStroke",Card)
-CardStroke.Transparency = 0.85
-CardStroke.Color = Color3.fromRGB(255,255,255)
-CardStroke.Thickness = 1
+local Subtitle = Instance.new("TextLabel")
+Subtitle.Size = UDim2.new(1,0,0,20)
+Subtitle.Position = UDim2.new(0,0,0,30)
+Subtitle.BackgroundTransparency = 1
+Subtitle.Text = "System controls and overview"
+Subtitle.Font = Enum.Font.Gotham
+Subtitle.TextSize = 13
+Subtitle.TextColor3 = Color3.fromRGB(168,176,188)
+Subtitle.TextXAlignment = Enum.TextXAlignment.Left
+Subtitle.Parent = Content
