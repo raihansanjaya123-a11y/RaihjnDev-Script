@@ -423,22 +423,97 @@ function Library:CreateWindow(cfg)
         TextXAlignment=Enum.TextXAlignment.Left,ZIndex=5,
     })
 
-    -- SAFE badge
-    local SBg=mk("Frame",TBar,{
-        Size=UDim2.new(0,68,0,22),Position=UDim2.new(1,-128,0.5,-11),
-        BackgroundColor3=Color3.fromRGB(5,28,18),BackgroundTransparency=0.2,
-        BorderSizePixel=0,ZIndex=5,
+    -- ── STATUS BAR (SAFE + custom badges) ──
+    local StatusBar=mk("Frame",TBar,{
+        Size=UDim2.new(0,200,0,26),Position=UDim2.new(1,-268,0.5,-13),
+        BackgroundTransparency=1,BorderSizePixel=0,ZIndex=5,
     })
-    rnd(SBg,11) bdr(SBg,T.Green,1,0.35)
-    local SDot=mk("Frame",SBg,{Size=UDim2.new(0,6,0,6),Position=UDim2.new(0,8,0.5,-3),BackgroundColor3=T.Green,BorderSizePixel=0,ZIndex=6})
-    rnd(SDot,99)
-    mk("TextLabel",SBg,{Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,20,0,0),BackgroundTransparency=1,Text="SAFE",TextColor3=T.Green,Font=Enum.Font.GothamBold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=6})
-    task.spawn(function()
-        while SDot and SDot.Parent do
-            tw(SDot,{BackgroundTransparency=0.8},0.9) task.wait(0.9)
-            tw(SDot,{BackgroundTransparency=0},0.9) task.wait(0.9)
+    local StatusLayout=mk("UIListLayout",StatusBar,{
+        FillDirection=Enum.FillDirection.Horizontal,
+        HorizontalAlignment=Enum.HorizontalAlignment.Right,
+        VerticalAlignment=Enum.VerticalAlignment.Center,
+        SortOrder=Enum.SortOrder.LayoutOrder,
+        Padding=UDim.new(0,5),
+    })
+
+    -- Fungsi buat satu badge
+    local function makeBadge(labelText, dotColor, bgColor, borderColor, order)
+        local bg=mk("Frame",StatusBar,{
+            Size=UDim2.new(0,0,0,22),  -- auto-width nanti
+            BackgroundColor3=bgColor or Color3.fromRGB(5,28,18),
+            BackgroundTransparency=0.2,BorderSizePixel=0,
+            ZIndex=6,LayoutOrder=order or 1,AutomaticSize=Enum.AutomaticSize.X,
+        })
+        rnd(bg,11)
+        bdr(bg,borderColor or dotColor,1,0.35)
+        mk("UIPadding",bg,{PaddingLeft=UDim.new(0,8),PaddingRight=UDim.new(0,10),PaddingTop=UDim.new(0,0),PaddingBottom=UDim.new(0,0)})
+        mk("UIListLayout",bg,{
+            FillDirection=Enum.FillDirection.Horizontal,
+            VerticalAlignment=Enum.VerticalAlignment.Center,
+            Padding=UDim.new(0,5),
+            SortOrder=Enum.SortOrder.LayoutOrder,
+        })
+        local dot=mk("Frame",bg,{
+            Size=UDim2.new(0,6,0,6),BackgroundColor3=dotColor,
+            BorderSizePixel=0,ZIndex=7,LayoutOrder=1,
+        })
+        rnd(dot,99)
+        local lbl=mk("TextLabel",bg,{
+            Size=UDim2.new(0,0,0,22),AutomaticSize=Enum.AutomaticSize.X,
+            BackgroundTransparency=1,Text=labelText,
+            TextColor3=dotColor,Font=Enum.Font.GothamBold,
+            TextSize=10,ZIndex=7,LayoutOrder=2,
+        })
+        -- dot blink
+        task.spawn(function()
+            while dot and dot.Parent do
+                tw(dot,{BackgroundTransparency=0.75},0.9) task.wait(0.9)
+                tw(dot,{BackgroundTransparency=0},0.9) task.wait(0.9)
+            end
+        end)
+        return {Frame=bg, Dot=dot, Label=lbl}
+    end
+
+    -- Badge SAFE selalu ada
+    local _safeBadge = makeBadge("SAFE", T.Green, Color3.fromRGB(5,28,18), T.Green, 99)
+
+    -- Tabel badge custom (dari WinAPI:AddStatus)
+    local _statusBadges = {}
+
+    -- Method untuk tambah/kelola status dari script
+    function WinAPI:AddStatus(id, label, color, bgColor)
+        if _statusBadges[id] then
+            -- Update label & warna badge yang ada
+            _statusBadges[id].Label.Text = label
+            _statusBadges[id].Label.TextColor3 = color or T.Accent
+            _statusBadges[id].Dot.BackgroundColor3 = color or T.Accent
+            _statusBadges[id].Frame.BackgroundColor3 = bgColor or Color3.fromRGB(5,16,32)
+            _statusBadges[id].Frame:FindFirstChildOfClass("UIStroke").Color = color or T.Accent
+        else
+            local order = #_statusBadges + 1
+            local badge = makeBadge(
+                label,
+                color or T.Accent,
+                bgColor or Color3.fromRGB(5,16,32),
+                color or T.Accent,
+                order
+            )
+            _statusBadges[id] = badge
         end
-    end)
+    end
+
+    function WinAPI:RemoveStatus(id)
+        if _statusBadges[id] then
+            local f = _statusBadges[id].Frame
+            tw(f,{BackgroundTransparency=1},0.2)
+            task.delay(0.25, function() pcall(function() f:Destroy() end) end)
+            _statusBadges[id] = nil
+        end
+    end
+
+    function WinAPI:SetStatus(id, label, color, bgColor)
+        self:AddStatus(id, label, color, bgColor)
+    end
 
     -- Window buttons
     local function winBtn(xOff, txt, bgCol, bgAlpha)
@@ -584,8 +659,22 @@ function Library:CreateWindow(cfg)
         })
         rnd(TInd,4)
 
-        mk("TextLabel",TBtn,{
-            Size=UDim2.new(1,-14,1,0),Position=UDim2.new(0,14,0,0),
+        -- Icon emoji (pakai _icon kalau ada)
+        local hasIcon = type(_icon)=="string" and #_icon>0
+        local iconLbl = nil
+        if hasIcon then
+            iconLbl = mk("TextLabel",TBtn,{
+                Size=UDim2.new(0,22,1,0),Position=UDim2.new(0,10,0,0),
+                BackgroundTransparency=1,Text=_icon,
+                TextColor3=T.TextDim,Font=Enum.Font.GothamBold,
+                TextSize=14,ZIndex=6,
+            })
+        end
+
+        local txtOffX = hasIcon and 34 or 14
+        local txtW    = hasIcon and -46 or -14
+        local NLbl2=mk("TextLabel",TBtn,{
+            Size=UDim2.new(1,txtW,1,0),Position=UDim2.new(0,txtOffX,0,0),
             BackgroundTransparency=1,Text=tabName,
             TextColor3=T.TextSub,Font=Enum.Font.Gotham,
             TextSize=12,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=6,
@@ -602,7 +691,7 @@ function Library:CreateWindow(cfg)
         ll(Page,5) pdg(Page,10,10,10,10) autoCanvas(Page)
 
         tabPages[tabName]=Page
-        tabBtns[tabName]={Btn=TBtn,Ind=TInd,NLbl=TBtn:FindFirstChildOfClass("TextLabel")}
+        tabBtns[tabName]={Btn=TBtn,Ind=TInd,NLbl=NLbl2,Icon=iconLbl}
 
         local function activateTab()
             for k,pg in pairs(tabPages) do
@@ -618,6 +707,8 @@ function Library:CreateWindow(cfg)
             tw(TBtn,{BackgroundTransparency=0.5,BackgroundColor3=T.Card},0.15)
             local nl=tabBtns[tabName].NLbl
             if nl then tw(nl,{TextColor3=T.Text},0.15) nl.Font=Enum.Font.GothamBold end
+            local ic=tabBtns[tabName].Icon
+            if ic then tw(ic,{TextColor3=T.Glow},0.15) end
             tw(TInd,{BackgroundTransparency=0},0.15)
         end
 
