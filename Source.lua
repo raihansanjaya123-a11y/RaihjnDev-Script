@@ -453,8 +453,8 @@ function Library:CreateWindow(cfg)
         b.MouseLeave:Connect(function() tw(b,{BackgroundTransparency=bgAlpha or 0.2},0.1) end)
         return b
     end
-    local BMin   = winBtn(-60,"—")
-    local BClose = winBtn(-30,"✕",Color3.fromRGB(192,38,50),0.0)
+    local BMin   = winBtn(-60,"➖")
+    local BClose = winBtn(-30,"✖",Color3.fromRGB(192,38,50),0.0)
     BClose.TextColor3 = T.White
 
     -- Drag
