@@ -432,7 +432,7 @@ function Library:CreateWindow(cfg)
     rnd(SBg,11) bdr(SBg,T.Green,1,0.35)
     local SDot=mk("Frame",SBg,{Size=UDim2.new(0,6,0,6),Position=UDim2.new(0,8,0.5,-3),BackgroundColor3=T.Green,BorderSizePixel=0,ZIndex=6})
     rnd(SDot,99)
-    mk("TextLabel",SBg,{Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,20,0,0),BackgroundTransparency=1,Text="SAFE",TextColor3=T.Green,Font=Enum.Font.GothamBold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=6})
+    mk("TextLabel",SBg,{Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,20,0,0),BackgroundTransparency=1,Text="AutoDetect",TextColor3=T.Green,Font=Enum.Font.GothamBold,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=6})
     task.spawn(function()
         while SDot and SDot.Parent do
             tw(SDot,{BackgroundTransparency=0.8},0.9) task.wait(0.9)
