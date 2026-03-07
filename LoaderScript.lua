@@ -7,41 +7,29 @@ getgenv().Rayfield = Rayfield
 getgenv().WebhookURL = getgenv().WebhookURL or ""
 
 -- ============================================================
--- LOAD SCRIPT HELPER (dengan error handling lebih baik)
+-- LOAD SCRIPT HELPER
 -- ============================================================
 local function LoadScriptFromUrl(url, scriptName)
     local success, result = pcall(function()
-        print("[Loader] Mengambil script:", scriptName)
         local content = game:HttpGet(url)
-        
-        -- Cek apakah HTML (error 404)
         if content:sub(1, 5) == "<html" then
-            error("URL mengembalikan HTML (mungkin 404). Cek URL: " .. url)
+            error("URL mengembalikan HTML, bukan script.")
         end
-        
-        -- Kompilasi
-        local func, err = loadstring(content)
-        if not func then
-            error("Gagal kompilasi: " .. tostring(err))
+        local func = loadstring(content)
+        if func then
+            func()
+            print("✅ Loaded: " .. scriptName)
+        else
+            warn("❌ Gagal kompilasi: " .. scriptName)
         end
-        
-        -- Jalankan
-        print("[Loader] Menjalankan script:", scriptName)
-        local execSuccess, execErr = pcall(func)
-        if not execSuccess then
-            error("Error saat menjalankan script: " .. tostring(execErr))
-        end
-        
-        print("[Loader] ✅ Sukses:", scriptName)
     end)
-    
     if not success then
-        warn("❌ Loader error [" .. scriptName .. "]: " .. tostring(result))
+        warn("❌ Error memuat [" .. scriptName .. "]: " .. tostring(result))
     end
 end
 
 -- ============================================================
--- SERVICES (TETAP)
+-- SERVICES
 -- ============================================================
 local RS      = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
@@ -89,7 +77,8 @@ local function ForceRestoreUI()
 end
 
 -- ============================================================
--- WEBHOOK SENDER (TETAP SAMA PERSIS)
+-- WEBHOOK SENDER (dipakai semua script via getgenv().SendWebhook)
+-- Support embed Discord, anti-spam queue
 -- ============================================================
 local HttpService
 pcall(function() HttpService = game:GetService("HttpService") end)
@@ -181,7 +170,7 @@ getgenv().SendWebhook = function(data)
 end
 
 -- ============================================================
--- WINDOW (TETAP)
+-- WINDOW
 -- ============================================================
 local Window = Rayfield:CreateWindow({
     Name             = "Craft A World",
@@ -249,7 +238,7 @@ LoadScriptFromUrl(
 )
 
 -- ============================================================
--- TAB: WEBHOOK (TETAP SAMA)
+-- TAB: WEBHOOK
 -- ============================================================
 local WebhookTab = Window:CreateTab("Webhook", nil)
 getgenv().RaihjnWebhookTab = WebhookTab
@@ -347,14 +336,19 @@ WebhookTab:CreateButton({
 })
 
 -- ============================================================
--- CLEANUP (TETAP)
+-- CLEANUP SEMUA SCRIPT (dipanggil saat Exit)
 -- ============================================================
 local function CleanupAll()
     -- Stop Pabrik
     getgenv().EnablePabrik    = false
     getgenv().PabrikIsRunning = false
 
-    -- Hentikan heartbeat pabrik
+    -- Kill coroutine pabrik
+    if getgenv().PabrikCoroutine then
+        pcall(function() coroutine.close(getgenv().PabrikCoroutine) end)
+        getgenv().PabrikCoroutine = nil
+    end
+
     if getgenv().RaihjnHeartbeatPabrik then
         pcall(function() getgenv().RaihjnHeartbeatPabrik:Disconnect() end)
         getgenv().RaihjnHeartbeatPabrik = nil
@@ -393,6 +387,9 @@ local function CleanupAll()
         getgenv().AFGridGui = nil
     end
 
+    -- Reset SendWebhook supaya tidak kirim lagi
+    getgenv().SendWebhook = nil
+
     print("[Exit] Semua script dihentikan.")
 end
 
@@ -415,5 +412,5 @@ SettingsTab:CreateButton({
     Callback = function()
         CleanupAll()
         pcall(function() Rayfield:Destroy() end)
-    end, 
+    end,
 })
