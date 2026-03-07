@@ -229,10 +229,11 @@ WebhookTab:CreateButton({
         end
         task.spawn(function()
             getgenv().SendWebhook(string.format(
-                "📊 **Stats Manual Report**\n👤 Player: %s\n🎮 Game: %s\n\n🏭 Pabrik — Cycle: %d\n📦 Pabrik — Total Drop: %d\n🌿 Pabrik — Seed: %s\n\n⛏️ AutoFarm — Cycle: %d\n🧱 AutoFarm — Broken: %d",
+                "📊 **Stats Manual Report**\n👤 Player: %s\n🎮 Game: %s\n\n🏭 Pabrik — Cycle: %d\n📦 Pabrik — Total Drop: %d\n🌿 Pabrik — Seed: %s\n\n⛏️ AutoFarm — Cycle: %d\n🧱 AutoFarm — Broken: %d\n\n🔨 Total Banned: %d",
                 LP.Name, game.Name,
                 getgenv().CycleCount or 0, getgenv().TotalDropAllTime or 0, getgenv().SelectedSeed or "?",
-                getgenv().AFB_CycleCount or 0, getgenv().AFB_TotalBroken or 0
+                getgenv().AFB_CycleCount or 0, getgenv().AFB_TotalBroken or 0,
+                getgenv().TotalBanned or 0
             ))
         end)
         Rayfield:Notify({Title="Webhook", Content="Stats dikirim!", Duration=3})
