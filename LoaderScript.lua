@@ -236,7 +236,8 @@ WebhookTab:CreateButton({
         end
         task.spawn(function()
             getgenv().SendWebhook({
-                    content  = "✅ Test webhook dari RaihjnDev berhasil!",
+                    title  = "✅ Test webhook dari RaihjnDev berhasil!",
+                    color  = 0x00FF00,
                     fields = {
                         {name = "🚹Players", value = LP.Name, Inline = true}
                     }
