@@ -78,66 +78,88 @@ end
 
 -- ============================================================
 -- WEBHOOK SENDER (dipakai semua script via getgenv().SendWebhook)
--- Mendukung embed Discord untuk tampilan yang lebih bagus
--- Cara pakai:
---   getgenv().SendWebhook("pesan biasa")
---   getgenv().SendWebhook({
---       title   = "Judul",
---       color   = 0x00ff00,   -- warna hex
---       fields  = {
---           {name="Label", value="Isi", inline=true},
---       },
---       footer  = "teks footer",
---   })
+-- Support embed Discord, anti-spam queue
 -- ============================================================
 local HttpService
 pcall(function() HttpService = game:GetService("HttpService") end)
 
-local function DoRequest(url, body)
-    local ok1 = pcall(function()
-        if syn and syn.request then
-            syn.request({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
-        else error("no syn") end
+-- Reset queue setiap inject supaya tidak numpuk
+local webhookQueue   = {}
+local webhookRunning = false
+getgenv()._webhookQueue   = webhookQueue
+getgenv()._webhookRunning = false
+
+local function ProcessQueue()
+    if getgenv()._webhookRunning then return end
+    getgenv()._webhookRunning = true
+    task.spawn(function()
+        while #webhookQueue > 0 do
+            local payload = table.remove(webhookQueue, 1)
+            local url = getgenv().WebhookURL
+            if url and url ~= "" and HttpService then
+                pcall(function()
+                    local body = HttpService:JSONEncode(payload)
+                    local ok1 = pcall(function()
+                        if syn and syn.request then
+                            syn.request({
+                                Url     = url,
+                                Method  = "POST",
+                                Headers = {["Content-Type"] = "application/json"},
+                                Body    = body,
+                            })
+                        else error("no syn") end
+                    end)
+                    if not ok1 then
+                        pcall(function()
+                            local fn = http and http.request or request
+                            fn({
+                                Url     = url,
+                                Method  = "POST",
+                                Headers = {["Content-Type"] = "application/json"},
+                                Body    = body,
+                            })
+                        end)
+                    end
+                end)
+            end
+            task.wait(1.5) -- jeda antar pesan, hindari rate limit Discord
+        end
+        getgenv()._webhookRunning = false
     end)
-    if not ok1 then
-        pcall(function()
-            local fn = http and http.request or request
-            fn({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
-        end)
-    end
 end
 
 getgenv().SendWebhook = function(data)
     if not HttpService then return end
-    local url = getgenv().WebhookURL
-    if not url or url == "" then return end
-    pcall(function()
-        local payload = {}
+    if not getgenv().WebhookURL or getgenv().WebhookURL == "" then return end
 
-        if type(data) == "string" then
-            -- Pesan biasa
-            payload = {content = data}
+    local payload = {}
 
-        elseif type(data) == "table" then
-            -- Embed Discord
-            local embed = {
-                title       = data.title or "",
-                description = data.description or nil,
-                color       = data.color or 0x5865F2,
-                fields      = data.fields or {},
-                footer      = data.footer and {text = data.footer} or nil,
-                timestamp   = data.timestamp and os.date("!%Y-%m-%dT%H:%M:%SZ") or nil,
-            }
-            payload = {
-                content  = data.content or nil,
-                embeds   = {embed},
-                username = data.username or ("CAW | "..LP.Name),
-            }
-        end
+    if type(data) == "string" then
+        payload = {
+            content  = data,
+            username = "CAW | " .. LP.Name,
+        }
+    elseif type(data) == "table" then
+        local embed = {
+            title       = data.title or "",
+            description = data.description or nil,
+            color       = data.color or 0x5865F2,
+            fields      = data.fields or {},
+            footer      = data.footer and {text = data.footer} or nil,
+        }
+        -- Hapus key nil supaya JSON bersih
+        if not embed.description then embed.description = nil end
+        if not embed.footer      then embed.footer      = nil end
 
-        local body = HttpService:JSONEncode(payload)
-        DoRequest(url, body)
-    end)
+        payload = {
+            content  = data.content or nil,
+            embeds   = {embed},
+            username = data.username or ("CAW | " .. LP.Name),
+        }
+    end
+
+    table.insert(webhookQueue, payload)
+    ProcessQueue()
 end
 
 -- ============================================================
@@ -243,7 +265,6 @@ WebhookTab:CreateButton({
                 title       = "✅ Test Webhook Berhasil!",
                 color       = 0x5865F2,  -- biru discord
                 description = "Koneksi webhook dari script kamu berjalan dengan baik.",
-                timestamp   = true,
                 fields      = {
                     {name="👤 Player", value=LP.Name,    inline=true},
                     {name="🎮 Game",   value=game.Name,  inline=true},
@@ -280,7 +301,6 @@ WebhookTab:CreateButton({
             getgenv().SendWebhook({
                 title       = "📊 Stats Manual Report",
                 color       = 0xEB459E,  -- pink
-                timestamp   = true,
                 fields      = {
                     {name="👤 Player",              value=LP.Name,                                        inline=true},
                     {name="🎮 Game",                value=game.Name,                                      inline=true},
