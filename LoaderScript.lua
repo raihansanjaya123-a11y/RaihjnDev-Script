@@ -1,40 +1,44 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
 getgenv().Rayfield = Rayfield
 
+-- ============================================================
+-- WEBHOOK URL (diisi di sini atau via UI tab Webhook)
+-- ============================================================
+getgenv().WebhookURL = getgenv().WebhookURL or ""
+
+-- ============================================================
+-- LOAD SCRIPT HELPER
+-- ============================================================
 local function LoadScriptFromUrl(url, scriptName)
     local success, result = pcall(function()
         local content = game:HttpGet(url)
         if content:sub(1, 5) == "<html" then
-            error("URL mengembalikan HTML, bukan script. Periksa URL.")
+            error("URL mengembalikan HTML, bukan script.")
         end
         local func = loadstring(content)
         if func then
             func()
-            print("Berhasil memuat script: " .. scriptName)
+            print("✅ Loaded: " .. scriptName)
         else
-            warn("Gagal mengkompilasi script: " .. scriptName)
-            print("Cuplikan konten (200 karakter pertama):")
-            print(content:sub(1, 200))
+            warn("❌ Gagal kompilasi: " .. scriptName)
         end
     end)
     if not success then
-        warn("Error memuat script: " .. scriptName .. " - " .. tostring(result))
+        warn("❌ Error memuat [" .. scriptName .. "]: " .. tostring(result))
     end
 end
 
-local RS = game:GetService("ReplicatedStorage")
-local Players   = game:GetService("Players")
-local LP        = Players.LocalPlayer
-local UIManager 
-local success, err = pcall(function() 
-    UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager")) 
+-- ============================================================
+-- SERVICES
+-- ============================================================
+local RS      = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LP      = Players.LocalPlayer
+
+local UIManager
+pcall(function()
+    UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager"))
 end)
-if success then
-    print("UIManager loaded successfully")
-else
-    warn("Error loading UIManager: " .. tostring(err))
-end
 
 local function ForceRestoreUI()
     pcall(function()
@@ -47,11 +51,11 @@ local function ForceRestoreUI()
     pcall(function()
         if UIManager then
             if type(UIManager.ShowHUD) == "function" then UIManager:ShowHUD() end
-            if type(UIManager.ShowUI) == "function" then UIManager:ShowUI() end
+            if type(UIManager.ShowUI)  == "function" then UIManager:ShowUI() end
         end
     end)
     pcall(function()
-        local targetUIs = { "topbar", "gems", "playerui", "hotbar", "crosshair", "mainhud", "stats", "inventory", "backpack", "menu", "bottombar", "buttons" }
+        local targetUIs = {"topbar","gems","playerui","hotbar","crosshair","mainhud","stats","inventory","backpack","menu","bottombar","buttons"}
         for _, gui in pairs(LP.PlayerGui:GetDescendants()) do
             if gui:IsA("Frame") or gui:IsA("ScreenGui") or gui:IsA("ImageLabel") then
                 local gName = string.lower(gui.Name)
@@ -72,91 +76,201 @@ local function ForceRestoreUI()
     end)
 end
 
+-- ============================================================
+-- WEBHOOK SENDER (dipakai semua script via getgenv().SendWebhook)
+-- ============================================================
+local HttpService
+pcall(function() HttpService = game:GetService("HttpService") end)
 
+getgenv().SendWebhook = function(content)
+    if not HttpService then return end
+    local url = getgenv().WebhookURL
+    if not url or url == "" then return end
+    pcall(function()
+        local body = HttpService:JSONEncode({content = content})
+        local ok1 = pcall(function()
+            if syn and syn.request then
+                syn.request({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
+            else error("no syn") end
+        end)
+        if not ok1 then
+            pcall(function()
+                local fn = http and http.request or request
+                fn({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
+            end)
+        end
+    end)
+end
+
+-- ============================================================
+-- WINDOW
+-- ============================================================
 local Window = Rayfield:CreateWindow({
-   Name = "Craft A World",
-   Icon = 0, -- Icon in Topbar. Can use Lucide Icons (string) or Roblox Image (number). 0 to use no icon (default).
-   LoadingTitle = "RaihjnDev",
-   LoadingSubtitle = "by RaihjnDev | Rayfield UI",
-   ShowText = "RaihjnDev", -- for mobile users to unhide Rayfield, change if you'd like
-   Theme = "Ocean", -- Check https://docs.sirius.menu/rayfield/configuration/themes
-
-   ToggleUIKeybind = "K", -- The keybind to toggle the UI visibility (string like "K" or Enum.KeyCode)
-
-   DisableRayfieldPrompts = true,
-   DisableBuildWarnings = false, -- Prevents Rayfield from emitting warnings when the script has a version mismatch with the interface.
-
-   ConfigurationSaving = {
-      Enabled = false,
-      FolderName = nil, -- Create a custom folder for your hub/game
-      FileName = "RaihjnDev Index"
-   },
-
-   Discord = {
-      Enabled = true, -- Prompt the user to join your Discord server if their executor supports it
-      Invite = "Me7FKdQdSp", -- The Discord invite code, do not include Discord.gg/. E.g. Discord.gg/ ABCD would be ABCD
-      RememberJoins = true -- Set this to false to make them join the Discord every time they load it up
-   },
-
-   KeySystem = false, -- Set this to true to use our key system
-   KeySettings = {
-      Title = "RaihjnDev",
-      Subtitle = "by RaihjnDev",
-      Note = "Join Discord to get key", -- Use this to tell the user how to get a key
-      FileName = "RaihjnDev | Key", -- It is recommended to use something unique, as other scripts using Rayfield may overwrite your key file
-      SaveKey = false, -- The user's key will be saved, but if you change the key, they will be unable to use your script
-      GrabKeyFromSite = true, -- If this is true, set Key below to the RAW site you would like Rayfield to get the key from
-      Key = {"https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/refs/heads/main/Key"} -- List of keys that the system will accept, can be RAW file links (pastebin, github, etc.) or simple strings ("hello", "key22")
-   }
+    Name             = "Craft A World",
+    Icon             = 0,
+    LoadingTitle     = "RaihjnDev",
+    LoadingSubtitle  = "by RaihjnDev | Rayfield UI",
+    ShowText         = "RaihjnDev",
+    Theme            = "Ocean",
+    ToggleUIKeybind  = "K",
+    DisableRayfieldPrompts  = true,
+    DisableBuildWarnings    = false,
+    ConfigurationSaving = {
+        Enabled    = false,
+        FolderName = nil,
+        FileName   = "RaihjnDev Index"
+    },
+    Discord = {
+        Enabled      = true,
+        Invite       = "Me7FKdQdSp",
+        RememberJoins = true
+    },
+    KeySystem = false,
+    KeySettings = {
+        Title    = "RaihjnDev",
+        Subtitle = "by RaihjnDev",
+        Note     = "Join Discord to get key",
+        FileName = "RaihjnDev | Key",
+        SaveKey  = false,
+        GrabKeyFromSite = true,
+        Key = {"https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/refs/heads/main/Key"}
+    }
 })
 
+-- ============================================================
+-- TAB: PABRIK
+-- ============================================================
 local MainTab = Window:CreateTab("Pabrik", nil)
 getgenv().RaihjnTab = MainTab
 
-local scriptPabrik = {
-    {Name = "PabrikRaihjn", url = 'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/PabrikRaihjn.lua'}
-}
-for i,v in pairs(scriptPabrik) do
-    LoadScriptFromUrl(v.url, v.Name)
-end
+LoadScriptFromUrl(
+    'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/PabrikRaihjn.lua',
+    'PabrikRaihjn'
+)
 
+-- ============================================================
+-- TAB: AUTO FARM
+-- ============================================================
 local AutoFarmTab = Window:CreateTab("AutoFarm", nil)
 getgenv().RaihjnAutoFarmTab = AutoFarmTab
 
-local scriptAutoFarm = {
-    {Name = "AutoFarm", url = 'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/AutoFarm.lua'}
-}
-for i,v in pairs(scriptAutoFarm) do
-    LoadScriptFromUrl(v.url, v.Name)
-end
+LoadScriptFromUrl(
+    'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/AutoFarm.lua',
+    'AutoFarm'
+)
 
+-- ============================================================
+-- TAB: MISC
+-- ============================================================
 local MiscTab = Window:CreateTab("Misc", nil)
 getgenv().RaihjnMiscTab = MiscTab
 
-local scriptMisc = {
-    {Name = "AutoBan", url = 'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/Autoban.lua'}
-}
-for i,v in pairs(scriptMisc) do
-    LoadScriptFromUrl(v.url, v.Name)
-end
+LoadScriptFromUrl(
+    'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/Autoban.lua',
+    'AutoBan'
+)
 
+-- ============================================================
+-- TAB: WEBHOOK
+-- ============================================================
+local WebhookTab = Window:CreateTab("Webhook", nil)
+getgenv().RaihjnWebhookTab = WebhookTab
+
+WebhookTab:CreateSection("Discord Webhook")
+
+WebhookTab:CreateInput({
+    Name                     = "Webhook URL",
+    PlaceholderText          = "https://discord.com/api/webhooks/...",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(t)
+        t = t:gsub("%s+", "")  -- hapus spasi
+        if t ~= "" then
+            getgenv().WebhookURL = t
+            Rayfield:Notify({Title="Webhook", Content="URL tersimpan!", Duration=3})
+            print("[Webhook] URL set:", t:sub(1, 40).."...")
+        end
+    end,
+})
+
+WebhookTab:CreateButton({
+    Name     = "🔔 Test Webhook",
+    Callback = function()
+        local url = getgenv().WebhookURL
+        if not url or url == "" then
+            Rayfield:Notify({Title="Webhook", Content="Isi URL dulu!", Duration=3})
+            return
+        end
+        task.spawn(function()
+            getgenv().SendWebhook(
+                "**[TEST]** Webhook dari `"..LP.Name.."` berhasil! ✅\n"..
+                "🎮 Game: `"..game.Name.."`"
+            )
+        end)
+        Rayfield:Notify({Title="Webhook", Content="Test dikirim ke Discord!", Duration=3})
+    end,
+})
+
+WebhookTab:CreateSection("Stats Pabrik")
+
+WebhookTab:CreateButton({
+    Name     = "📊 Lihat Stats Pabrik",
+    Callback = function()
+        local cycle = getgenv().CycleCount or 0
+        local total = getgenv().TotalDropAllTime or 0
+        local seed  = getgenv().SelectedSeed or "?"
+        local msg   = "Cycle: "..cycle.."\nTotal Drop: "..total.."\nSeed: "..seed
+        Rayfield:Notify({Title="Stats Pabrik", Content=msg, Duration=6})
+        print("[Stats]", msg)
+    end,
+})
+
+WebhookTab:CreateButton({
+    Name     = "📤 Kirim Stats ke Discord",
+    Callback = function()
+        local url = getgenv().WebhookURL
+        if not url or url == "" then
+            Rayfield:Notify({Title="Webhook", Content="Isi URL dulu!", Duration=3}); return
+        end
+        task.spawn(function()
+            getgenv().SendWebhook(
+                "**[STATS] Manual Report**\n"..
+                "👤 `"..LP.Name.."`\n"..
+                "🔄 Cycle Pabrik: `"..(getgenv().CycleCount or 0).."`\n"..
+                "📦 Total Drop Pabrik: `"..(getgenv().TotalDropAllTime or 0).."x`\n"..
+                "🌱 Seed: `"..(getgenv().SelectedSeed or "?").."`\n"..
+                "⛏️ AutoFarm Cycle: `"..(getgenv().AFB_CycleCount or 0).."`\n"..
+                "🧱 Total Broken: `"..(getgenv().AFB_TotalBroken or 0).."`"
+            )
+        end)
+        Rayfield:Notify({Title="Webhook", Content="Stats dikirim!", Duration=3})
+    end,
+})
+
+WebhookTab:CreateButton({
+    Name     = "🔁 Reset Stats Pabrik",
+    Callback = function()
+        getgenv().TotalDropAllTime = 0
+        getgenv().CycleCount       = 0
+        Rayfield:Notify({Title="Stats", Content="Reset!", Duration=2})
+    end,
+})
+
+-- ============================================================
+-- TAB: SETTINGS
+-- ============================================================
 local SettingsTab = Window:CreateTab("Settings", nil)
 getgenv().RaihjnSettingsTab = SettingsTab
 
 SettingsTab:CreateButton({
-    Name = "Reset UI",
+    Name     = "Reset UI",
     Callback = function()
         ForceRestoreUI()
-        Rayfield:Notify({
-            Title = "Reset UI",
-            Content = "UI reset successfully",
-            Duration = 3,
-        })
+        Rayfield:Notify({Title="Reset UI", Content="UI reset successfully", Duration=3})
     end,
 })
 
 SettingsTab:CreateButton({
-    Name = "Exit",
+    Name     = "Exit",
     Callback = function()
         Rayfield:Destroy()
     end,
