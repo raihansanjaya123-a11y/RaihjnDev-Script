@@ -239,8 +239,8 @@ WebhookTab:CreateButton({
                     title  = "✅ Test webhook dari RaihjnDev berhasil!",
                     color  = 0x00FF00,
                     fields = {
-                        {name = "🚹Players", value = LP.Name, Inline = true}
-                    }
+                        {name = "🚹Players", value = LP.Name, Inline = true},
+                    },
                 })
         end)
         Rayfield:Notify({Title="Webhook", Content="Test dikirim ke Discord!", Duration=3})
