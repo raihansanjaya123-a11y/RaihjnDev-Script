@@ -256,6 +256,57 @@ WebhookTab:CreateButton({
 })
 
 -- ============================================================
+-- CLEANUP SEMUA SCRIPT (dipanggil saat Exit)
+-- ============================================================
+local function CleanupAll()
+    -- Stop Pabrik
+    getgenv().EnablePabrik = false
+
+    if getgenv().RaihjnHeartbeatPabrik then
+        pcall(function() getgenv().RaihjnHeartbeatPabrik:Disconnect() end)
+        getgenv().RaihjnHeartbeatPabrik = nil
+    end
+
+    -- Stop AutoFarm
+    getgenv().AFB_Enabled = false
+
+    if getgenv().AFBlockHeartbeat then
+        pcall(function() getgenv().AFBlockHeartbeat:Disconnect() end)
+        getgenv().AFBlockHeartbeat = nil
+    end
+    if getgenv().AFBlockLoop then
+        pcall(function() task.cancel(getgenv().AFBlockLoop) end)
+        getgenv().AFBlockLoop = nil
+    end
+
+    -- Stop ghosting
+    getgenv().IsGhosting     = false
+    getgenv().HoldCFrame     = nil
+    getgenv().AFB_IsGhosting = false
+    getgenv().AFB_HoldCFrame = nil
+
+    -- Unanchor karakter kalau masih ke-anchor
+    pcall(function()
+        local char = LP.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.Anchored = false end
+        end
+    end)
+
+    -- Destroy GUI sisa (GridSelector dll)
+    if getgenv().AFGridGui then
+        pcall(function() getgenv().AFGridGui:Destroy() end)
+        getgenv().AFGridGui = nil
+    end
+
+    -- Reset SendWebhook supaya tidak kirim lagi
+    getgenv().SendWebhook = nil
+
+    print("[Exit] Semua script dihentikan.")
+end
+
+-- ============================================================
 -- TAB: SETTINGS
 -- ============================================================
 local SettingsTab = Window:CreateTab("Settings", nil)
@@ -270,8 +321,9 @@ SettingsTab:CreateButton({
 })
 
 SettingsTab:CreateButton({
-    Name     = "Exit",
+    Name     = "🛑 Exit & Stop Semua Script",
     Callback = function()
-        Rayfield:Destroy()
+        CleanupAll()
+        pcall(function() Rayfield:Destroy() end)
     end,
 })
