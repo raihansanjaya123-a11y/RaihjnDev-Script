@@ -662,18 +662,14 @@ if not MainTab then warn("[Pabrik] RaihjnTab nil!"); return end
 local uiOk, uiErr = pcall(function()
 
     MainTab:CreateSection("Delay Settings")
-    MainTab:CreateInput({Name="Plant Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().PlaceDelay=n end end})
-    MainTab:CreateInput({Name="Plant Hit Count", PlaceholderText="2", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().PlantHitCount=n end end})
     MainTab:CreateInput({Name="Hit Count", PlaceholderText="3", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().HitCount=n end end})
+    MainTab:CreateInput({Name="Plant Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
+        Callback=function(t) local n=tonumber(t); if n then getgenv().PlaceDelay=n end end})
     MainTab:CreateInput({Name="Break Delay", PlaceholderText="0.15", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().BreakDelay=n end end})
     MainTab:CreateInput({Name="Step Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().StepDelay=n end end})
-    MainTab:CreateInput({Name="Y Gap", PlaceholderText="2", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n and n>=1 then getgenv().YGap=n end end})
     MainTab:CreateInput({Name="Growth Time", PlaceholderText="Waktu tumbuh (detik)", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().GrowthTime=n end end})
 
@@ -696,6 +692,14 @@ local uiOk, uiErr = pcall(function()
             Rayfield:Notify({Title="Seed", Content=id, Duration=2})
         end,
     })
+    MainTab:CreateButton({Name="Refresh Item List", Callback=function()
+        local items = ScanAvailableItems()
+        pcall(function()
+            MainTab:UpdateDropdown("PabrikBlockDrop", items)
+            MainTab:UpdateDropdown("PabrikSeedDrop", items)
+        end)
+        Rayfield:Notify({Title="Item List", Content="Diperbarui! Total item: "..#items, Duration=2})
+    end})
     MainTab:CreateInput({Name="Keep Seed Amount", PlaceholderText="20", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().KeepSeedAmt=n end end})
     MainTab:CreateInput({Name="Block Threshold", PlaceholderText="20", RemoveTextAfterFocusLost=false,
