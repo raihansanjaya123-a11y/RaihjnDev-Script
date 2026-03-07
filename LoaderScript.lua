@@ -7,107 +7,50 @@ getgenv().Rayfield = Rayfield
 getgenv().WebhookURL = getgenv().WebhookURL or ""
 
 -- ============================================================
--- FUNGSI DASAR YANG MUNGKIN DIPAKAI OLEH SCRIPT LAIN
--- ============================================================
-local Players = game:GetService("Players")
-local LP = Players.LocalPlayer
-local RS = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
-
--- Fungsi untuk mendapatkan hitbox pemain (sering dipakai)
-local function GetMyHitbox()
-    local h = workspace:FindFirstChild("Hitbox")
-    return h and h:FindFirstChild(LP.Name)
-end
-getgenv().GetMyHitbox = GetMyHitbox
-
--- Fungsi untuk mendapatkan posisi grid
-local function GetMyPosition()
-    local h = GetMyHitbox()
-    if not h then return 0, 0 end
-    local gridSize = getgenv().GridSize or 4.5
-    return math.floor(h.Position.X / gridSize + 0.5),
-           math.floor(h.Position.Y / gridSize + 0.5)
-end
-getgenv().GetMyPosition = GetMyPosition
-
--- Fungsi untuk menggerakkan hitbox
-local function WalkToGrid(targetX, targetY)
-    local cx, cy = GetMyPosition()
-    local gridSize = getgenv().GridSize or 4.5
-    local stepDelay = getgenv().StepDelay or 0.1
-    while cx ~= targetX or cy ~= targetY do
-        if not getgenv().EnablePabrik and not getgenv().AFB_Enabled then break end
-        if cx ~= targetX then
-            cx = cx + (targetX > cx and 1 or -1)
-        else
-            cy = cy + (targetY > cy and 1 or -1)
-        end
-        local h = GetMyHitbox()
-        if h then
-            local pos = Vector3.new(cx * gridSize, cy * gridSize, h.Position.Z)
-            h.CFrame = CFrame.new(pos)
-        end
-        task.wait(stepDelay)
-    end
-    -- Pastikan posisi tepat
-    local h = GetMyHitbox()
-    if h then
-        h.CFrame = CFrame.new(Vector3.new(targetX * gridSize, targetY * gridSize, h.Position.Z))
-    end
-end
-getgenv().WalkToGrid = WalkToGrid
-
--- Load modul game (jika ada)
-local PlayerMovement
-pcall(function() PlayerMovement = require(LP.PlayerScripts:WaitForChild("PlayerMovement")) end)
-getgenv().PlayerMovement = PlayerMovement
-
-local InventoryMod
-pcall(function() InventoryMod = require(RS:WaitForChild("Modules"):WaitForChild("Inventory")) end)
-getgenv().InventoryMod = InventoryMod
-
-local UIManager
-pcall(function() UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager")) end)
-getgenv().UIManager = UIManager
-
--- ============================================================
 -- LOAD SCRIPT HELPER (dengan error handling lebih baik)
 -- ============================================================
 local function LoadScriptFromUrl(url, scriptName)
     local success, result = pcall(function()
+        print("[Loader] Mengambil script:", scriptName)
         local content = game:HttpGet(url)
+        
+        -- Cek apakah HTML (error 404)
         if content:sub(1, 5) == "<html" then
-            error("URL mengembalikan HTML, bukan script. Cek URL: " .. url)
+            error("URL mengembalikan HTML (mungkin 404). Cek URL: " .. url)
         end
+        
+        -- Kompilasi
         local func, err = loadstring(content)
         if not func then
             error("Gagal kompilasi: " .. tostring(err))
         end
-        print("▶️ Menjalankan script:", scriptName)
-        func()
-        print("✅ Loaded: " .. scriptName)
+        
+        -- Jalankan
+        print("[Loader] Menjalankan script:", scriptName)
+        local execSuccess, execErr = pcall(func)
+        if not execSuccess then
+            error("Error saat menjalankan script: " .. tostring(execErr))
+        end
+        
+        print("[Loader] ✅ Sukses:", scriptName)
     end)
+    
     if not success then
-        warn("❌ Error memuat [" .. scriptName .. "]: " .. tostring(result))
-        -- Tampilkan notifikasi jika mau
-        pcall(function()
-            Rayfield:Notify({
-                Title = "Error Load Script",
-                Content = scriptName .. " gagal dimuat. Cek console.",
-                Duration = 5
-            })
-        end)
+        warn("❌ Loader error [" .. scriptName .. "]: " .. tostring(result))
     end
 end
 
 -- ============================================================
--- SERVICES
+-- SERVICES (TETAP)
 -- ============================================================
 local RS      = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local LP      = Players.LocalPlayer
+
+local UIManager
+pcall(function()
+    UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager"))
+end)
 
 local function ForceRestoreUI()
     pcall(function()
@@ -146,10 +89,10 @@ local function ForceRestoreUI()
 end
 
 -- ============================================================
--- WEBHOOK SENDER (dipakai semua script via getgenv().SendWebhook)
--- Support embed Discord, anti-spam queue
+-- WEBHOOK SENDER (TETAP SAMA PERSIS)
 -- ============================================================
-local HttpService = game:GetService("HttpService")
+local HttpService
+pcall(function() HttpService = game:GetService("HttpService") end)
 
 local function GetPlayerName()
     local ok, name = pcall(function()
@@ -238,7 +181,7 @@ getgenv().SendWebhook = function(data)
 end
 
 -- ============================================================
--- WINDOW
+-- WINDOW (TETAP)
 -- ============================================================
 local Window = Rayfield:CreateWindow({
     Name             = "Craft A World",
@@ -306,7 +249,7 @@ LoadScriptFromUrl(
 )
 
 -- ============================================================
--- TAB: WEBHOOK
+-- TAB: WEBHOOK (TETAP SAMA)
 -- ============================================================
 local WebhookTab = Window:CreateTab("Webhook", nil)
 getgenv().RaihjnWebhookTab = WebhookTab
@@ -404,7 +347,7 @@ WebhookTab:CreateButton({
 })
 
 -- ============================================================
--- CLEANUP SEMUA SCRIPT (dipanggil saat Exit)
+-- CLEANUP (TETAP)
 -- ============================================================
 local function CleanupAll()
     -- Stop Pabrik
@@ -474,12 +417,3 @@ SettingsTab:CreateButton({
         pcall(function() Rayfield:Destroy() end)
     end, 
 })
-
--- Notifikasi awal
-Rayfield:Notify({
-    Title = "RaihjnDev Loader",
-    Content = "Loader siap, memuat script...",
-    Duration = 3
-})
-
-print("✅ Loader utama berjalan. Menunggu script lain...")
