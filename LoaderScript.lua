@@ -78,27 +78,65 @@ end
 
 -- ============================================================
 -- WEBHOOK SENDER (dipakai semua script via getgenv().SendWebhook)
+-- Mendukung embed Discord untuk tampilan yang lebih bagus
+-- Cara pakai:
+--   getgenv().SendWebhook("pesan biasa")
+--   getgenv().SendWebhook({
+--       title   = "Judul",
+--       color   = 0x00ff00,   -- warna hex
+--       fields  = {
+--           {name="Label", value="Isi", inline=true},
+--       },
+--       footer  = "teks footer",
+--   })
 -- ============================================================
 local HttpService
 pcall(function() HttpService = game:GetService("HttpService") end)
 
-getgenv().SendWebhook = function(content)
+local function DoRequest(url, body)
+    local ok1 = pcall(function()
+        if syn and syn.request then
+            syn.request({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
+        else error("no syn") end
+    end)
+    if not ok1 then
+        pcall(function()
+            local fn = http and http.request or request
+            fn({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
+        end)
+    end
+end
+
+getgenv().SendWebhook = function(data)
     if not HttpService then return end
     local url = getgenv().WebhookURL
     if not url or url == "" then return end
     pcall(function()
-        local body = HttpService:JSONEncode({content = content})
-        local ok1 = pcall(function()
-            if syn and syn.request then
-                syn.request({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
-            else error("no syn") end
-        end)
-        if not ok1 then
-            pcall(function()
-                local fn = http and http.request or request
-                fn({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
-            end)
+        local payload = {}
+
+        if type(data) == "string" then
+            -- Pesan biasa
+            payload = {content = data}
+
+        elseif type(data) == "table" then
+            -- Embed Discord
+            local embed = {
+                title       = data.title or "",
+                description = data.description or nil,
+                color       = data.color or 0x5865F2,
+                fields      = data.fields or {},
+                footer      = data.footer and {text = data.footer} or nil,
+                timestamp   = data.timestamp and os.date("!%Y-%m-%dT%H:%M:%SZ") or nil,
+            }
+            payload = {
+                content  = data.content or nil,
+                embeds   = {embed},
+                username = data.username or ("CAW | "..LP.Name),
+            }
         end
+
+        local body = HttpService:JSONEncode(payload)
+        DoRequest(url, body)
     end)
 end
 
@@ -201,10 +239,17 @@ WebhookTab:CreateButton({
             return
         end
         task.spawn(function()
-            getgenv().SendWebhook(
-                "**[TEST]** Webhook dari `"..LP.Name.."` berhasil! ✅\n"..
-                "🎮 Game: `"..game.Name.."`"
-            )
+            getgenv().SendWebhook({
+                title       = "✅ Test Webhook Berhasil!",
+                color       = 0x5865F2,  -- biru discord
+                description = "Koneksi webhook dari script kamu berjalan dengan baik.",
+                timestamp   = true,
+                fields      = {
+                    {name="👤 Player", value=LP.Name,    inline=true},
+                    {name="🎮 Game",   value=game.Name,  inline=true},
+                },
+                footer = "RaihjnDev • CAW Script",
+            })
         end)
         Rayfield:Notify({Title="Webhook", Content="Test dikirim ke Discord!", Duration=3})
     end,
@@ -232,15 +277,23 @@ WebhookTab:CreateButton({
             Rayfield:Notify({Title="Webhook", Content="Isi URL dulu!", Duration=3}); return
         end
         task.spawn(function()
-            getgenv().SendWebhook(
-                "**[STATS] Manual Report**\n"..
-                "👤 `"..LP.Name.."`\n"..
-                "🔄 Cycle Pabrik: `"..(getgenv().CycleCount or 0).."`\n"..
-                "📦 Total Drop Pabrik: `"..(getgenv().TotalDropAllTime or 0).."x`\n"..
-                "🌱 Seed: `"..(getgenv().SelectedSeed or "?").."`\n"..
-                "⛏️ AutoFarm Cycle: `"..(getgenv().AFB_CycleCount or 0).."`\n"..
-                "🧱 Total Broken: `"..(getgenv().AFB_TotalBroken or 0).."`"
-            )
+            getgenv().SendWebhook({
+                title       = "📊 Stats Manual Report",
+                color       = 0xEB459E,  -- pink
+                timestamp   = true,
+                fields      = {
+                    {name="👤 Player",              value=LP.Name,                                        inline=true},
+                    {name="🎮 Game",                value=game.Name,                                      inline=true},
+                    {name="\u200b",                 value="\u200b",                                       inline=false},
+                    {name="🏭 Pabrik — Cycle",      value=tostring(getgenv().CycleCount or 0),            inline=true},
+                    {name="📦 Pabrik — Total Drop",  value=tostring(getgenv().TotalDropAllTime or 0).."x", inline=true},
+                    {name="🌿 Pabrik — Seed",        value=tostring(getgenv().SelectedSeed or "?"),        inline=true},
+                    {name="\u200b",                 value="\u200b",                                       inline=false},
+                    {name="⛏️ AutoFarm — Cycle",    value=tostring(getgenv().AFB_CycleCount or 0),        inline=true},
+                    {name="🧱 AutoFarm — Broken",   value=tostring(getgenv().AFB_TotalBroken or 0),       inline=true},
+                },
+                footer = "RaihjnDev • CAW Script",
+            })
         end)
         Rayfield:Notify({Title="Webhook", Content="Stats dikirim!", Duration=3})
     end,
@@ -260,7 +313,14 @@ WebhookTab:CreateButton({
 -- ============================================================
 local function CleanupAll()
     -- Stop Pabrik
-    getgenv().EnablePabrik = false
+    getgenv().EnablePabrik    = false
+    getgenv().PabrikIsRunning = false
+
+    -- Kill coroutine pabrik
+    if getgenv().PabrikCoroutine then
+        pcall(function() coroutine.close(getgenv().PabrikCoroutine) end)
+        getgenv().PabrikCoroutine = nil
+    end
 
     if getgenv().RaihjnHeartbeatPabrik then
         pcall(function() getgenv().RaihjnHeartbeatPabrik:Disconnect() end)
