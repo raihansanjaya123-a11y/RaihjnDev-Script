@@ -1,5 +1,11 @@
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-getgenv().Rayfield = Rayfield
+```lua
+local Rayfield
+local success, result = pcall(function()
+    local rayContent = game:HttpGet('https://sirius.menu/rayfield')
+    local rayFunc = loadstring(rayContent)
+    if rayFunc then
+        Rayfield = rayFunc()
+    The issue is likely that `Rayfield` is failing to load from the external URL, which prevents the UI from being created. Add error handling to check if Rayfield loaded successfully before attempting to create windows.
 
 -- ============================================================
 -- WEBHOOK URL (diisi di sini atau via UI tab Webhook)
@@ -172,6 +178,11 @@ end
 -- ============================================================
 -- WINDOW
 -- ============================================================
+if not Rayfield then
+    warn("❌ Rayfield not loaded, cannot create window")
+    return
+end
+
 local Window = Rayfield:CreateWindow({
     Name             = "Craft A World",
     Icon             = 0,
