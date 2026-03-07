@@ -660,24 +660,22 @@ local mainCoro = coroutine.create(function()
 
             -- WEBHOOK: 1x per cycle, semua info lengkap
             task.spawn(function()
-                SendWebhook({
-                    title       = "🏭 Pabrik — Siklus #"..getgenv().CycleCount.." Selesai",
-                    color       = 0xFEE75C,
-                    description = "Siklus farming selesai!",
-                    timestamp   = true,
-                    fields      = {
-                        {name="👤 Player",              value=LP.Name,                                                                inline=true},
-                        {name="🌿 Seed",                value=getgenv().SelectedSeed,                                                inline=true},
-                        {name="🧱 Block",               value=getgenv().SelectedBlock,                                               inline=true},
-                        {name="📍 Plant Terakhir",      value=lastPlantedX and ("X="..lastPlantedX.." Y="..lastPlantedY) or "?",     inline=true},
-                        {name="✅ Tile Di-plant",       value=tostring(plantedCount),                                                 inline=true},
-                        {name="⛔ Tile Di-skip",        value=tostring(skippedCount),                                                 inline=true},
-                        {name="🌱 Drop Cycle Ini",      value=tostring(droppedThisCycle).."x",                                       inline=true},
-                        {name="📦 Total Drop All Time", value=tostring(getgenv().TotalDropAllTime).."x",                             inline=true},
-                        {name="🔄 Total Siklus",        value=tostring(getgenv().CycleCount),                                        inline=true},
-                    },
-                    footer = "RaihjnDev • Pabrik Script",
-                })
+                local elapsed = os.time() - (getgenv().PabrikStartTime or os.time())
+                local h = math.floor(elapsed / 3600)
+                local m = math.floor((elapsed % 3600) / 60)
+                local s = elapsed % 60
+                local timeStr = string.format("%02d:%02d:%02d", h, m, s)
+                SendWebhook(
+                    "**[PABRIK] SIKLUS #"..getgenv().CycleCount.." SELESAI**\n"..
+                    "👤 `"..LP.Name.."`\n"..
+                    "🕐 Waktu: `"..timeStr.."`\n"..
+                    "🌿 Seed: `"..getgenv().SelectedSeed.."`\n"..
+                    "🧱 Block: `"..getgenv().SelectedBlock.."`\n"..
+                    "📍 Plant terakhir: `X="..tostring(lastPlantedX).." Y="..tostring(lastPlantedY).."`\n"..
+                    "✅ Di-plant: `"..plantedCount.."` | ⛔ Skip: `"..skippedCount.."`\n"..
+                    "🌱 Drop cycle ini: `"..droppedThisCycle.."x`\n"..
+                    "📦 Total all time: `"..getgenv().TotalDropAllTime.."x`"
+                )
             end)
 
             print("[Pabrik] Siklus", getgenv().CycleCount, "selesai!")
@@ -745,8 +743,14 @@ local uiOk, uiErr = pcall(function()
         Name="Enable Pabrik", CurrentValue=false, Flag="EnablePabrikToggle",
         Callback=function(v)
             getgenv().EnablePabrik = v
-            if not v then getgenv().PabrikIsRunning = false end
-            print("[Pabrik] Enable:", v)
+            if v then
+                -- Simpan waktu saat toggle ON
+                getgenv().PabrikStartTime = os.time()
+                print("[Pabrik] Enable: true | Timer mulai")
+            else
+                getgenv().PabrikIsRunning = false
+                print("[Pabrik] Enable: false")
+            end
         end,
     })
 
