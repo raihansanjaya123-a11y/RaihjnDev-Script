@@ -5,7 +5,12 @@ local success, result = pcall(function()
     local rayFunc = loadstring(rayContent)
     if rayFunc then
         Rayfield = rayFunc()
-    The issue is likely that `Rayfield` is failing to load from the external URL, which prevents the UI from being created. Add error handling to check if Rayfield loaded successfully before attempting to create windows.
+    end
+end)
+
+if not success then
+    warn("❌ Rayfield failed to load: " .. tostring(result))
+end
 
 -- ============================================================
 -- WEBHOOK URL (diisi di sini atau via UI tab Webhook)
