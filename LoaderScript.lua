@@ -7,13 +7,13 @@ getgenv().Rayfield = Rayfield
 getgenv().WebhookURL = getgenv().WebhookURL or ""
 
 -- ============================================================
--- LOAD SCRIPT HELPER
+-- LOAD SCRIPT HELPER (dengan error handling lebih baik)
 -- ============================================================
 local function LoadScriptFromUrl(url, scriptName)
     local success, result = pcall(function()
         local content = game:HttpGet(url)
         if content:sub(1, 5) == "<html" then
-            error("URL mengembalikan HTML, bukan script.")
+            error("URL mengembalikan HTML, bukan script. Cek URL: " .. url)
         end
         local func = loadstring(content)
         if func then
@@ -343,12 +343,7 @@ local function CleanupAll()
     getgenv().EnablePabrik    = false
     getgenv().PabrikIsRunning = false
 
-    -- Kill coroutine pabrik
-    if getgenv().PabrikCoroutine then
-        pcall(function() coroutine.close(getgenv().PabrikCoroutine) end)
-        getgenv().PabrikCoroutine = nil
-    end
-
+    -- Hentikan heartbeat pabrik
     if getgenv().RaihjnHeartbeatPabrik then
         pcall(function() getgenv().RaihjnHeartbeatPabrik:Disconnect() end)
         getgenv().RaihjnHeartbeatPabrik = nil
@@ -387,9 +382,6 @@ local function CleanupAll()
         getgenv().AFGridGui = nil
     end
 
-    -- Reset SendWebhook supaya tidak kirim lagi
-    getgenv().SendWebhook = nil
-
     print("[Exit] Semua script dihentikan.")
 end
 
@@ -412,5 +404,5 @@ SettingsTab:CreateButton({
     Callback = function()
         CleanupAll()
         pcall(function() Rayfield:Destroy() end)
-    end,
+    end, 
 })
