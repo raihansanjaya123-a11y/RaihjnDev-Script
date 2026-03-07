@@ -1,5 +1,6 @@
 -- ============================================================
 -- SCRIPT PABRIK v3 - FIXED LOAD + WEBHOOK + BLOCK DETECTOR
+-- Webhook dikirim via getgenv().SendWebhook dari loader
 -- ============================================================
 
 if getgenv().RaihjnHeartbeatPabrik then
@@ -12,10 +13,6 @@ local LP          = Players.LocalPlayer
 local RS          = game:GetService("ReplicatedStorage")
 local RunService  = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
-
--- HttpService aman di pcall
-local HttpService
-pcall(function() HttpService = game:GetService("HttpService") end)
 
 LP.Idled:Connect(function()
     VirtualUser:CaptureController()
@@ -64,29 +61,11 @@ pcall(function() InventoryMod = require(RS:WaitForChild("Modules"):WaitForChild(
 local UIManager
 pcall(function() UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager")) end)
 
--- ============================================================
--- WEBHOOK (safe, tidak crash kalau HttpService nil)
--- ============================================================
+-- Webhook pakai getgenv().SendWebhook dari loader
 local function SendWebhook(content)
-    if not HttpService then return end
-    local url = getgenv().WebhookURL
-    if not url or url == "" then return end
-    pcall(function()
-        local body = HttpService:JSONEncode({content = content})
-        local ok1 = pcall(function()
-            if syn and syn.request then
-                syn.request({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
-            else
-                error("no syn")
-            end
-        end)
-        if not ok1 then
-            pcall(function()
-                local fn = http and http.request or request
-                fn({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
-            end)
-        end
-    end)
+    if getgenv().SendWebhook then
+        getgenv().SendWebhook(content)
+    end
 end
 
 -- ============================================================
@@ -767,29 +746,6 @@ local uiOk, uiErr = pcall(function()
             pcall(function() DPX:Set(tostring(dx)); DPY:Set(tostring(dy)) end)
             Rayfield:Notify({Title="Drop Pos", Content="X:"..dx.." Y:"..dy, Duration=3})
         end
-    end})
-
-    MainTab:CreateSection("Webhook & Stats")
-    MainTab:CreateButton({Name="Test Webhook", Callback=function()
-        local url = getgenv().WebhookURL
-        if not url or url=="" then
-            Rayfield:Notify({Title="Webhook", Content="Set WebhookURL di loader dulu!", Duration=3}); return
-        end
-        task.spawn(function()
-            SendWebhook("**[TEST]** `"..LP.Name.."` webhook OK!")
-        end)
-        Rayfield:Notify({Title="Webhook", Content="Test dikirim!", Duration=3})
-    end})
-    MainTab:CreateButton({Name="Lihat Stats", Callback=function()
-        Rayfield:Notify({
-            Title="Stats",
-            Content="Cycle: "..getgenv().CycleCount.."\nTotal Drop: "..getgenv().TotalDropAllTime,
-            Duration=5,
-        })
-    end})
-    MainTab:CreateButton({Name="Reset Stats", Callback=function()
-        getgenv().TotalDropAllTime=0; getgenv().CycleCount=0
-        Rayfield:Notify({Title="Stats", Content="Reset!", Duration=2})
     end})
 
 end)
