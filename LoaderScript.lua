@@ -239,7 +239,7 @@ WebhookTab:CreateButton({
                     title  = "✅ Test webhook dari RaihjnDev berhasil!",
                     color  = 0x00FF00,
                     fields = {
-                        {name = "🚹Players", value = LP.Name, Inline = true},
+                        {name = "🚹Players", value = LP.Name},
                     },
                 })
         end)
