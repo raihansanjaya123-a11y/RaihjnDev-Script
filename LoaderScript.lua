@@ -235,7 +235,12 @@ WebhookTab:CreateButton({
             return
         end
         task.spawn(function()
-            getgenv().SendWebhook("✅ Test webhook dari RaihjnDev loader berhasil!")
+            getgenv().SendWebhook({
+                    content  = "✅ Test webhook dari RaihjnDev berhasil!",
+                    fields = {
+                        {name = "🚹Players", value = LP.Name, Inline = true}
+                    }
+                })
         end)
         Rayfield:Notify({Title="Webhook", Content="Test dikirim ke Discord!", Duration=3})
     end,
