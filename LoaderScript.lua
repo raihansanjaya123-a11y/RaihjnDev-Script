@@ -1,7 +1,13 @@
+-- Kompatibilitas loadstring untuk berbagai executor mobile
+local _loadstring = loadstring
+    or syn and syn.loadstring
+    or fluxus and fluxus.loadstring
+    or (function(s) return load(s) end)
+
 local Rayfield
 do
     local ok, result = pcall(function()
-        local fn = loadstring(game:HttpGet('https://sirius.menu/rayfield'))
+        local fn = _loadstring(game:HttpGet('https://sirius.menu/rayfield'))
         if not fn then error("loadstring nil") end
         return fn()
     end)
@@ -9,9 +15,8 @@ do
         Rayfield = result
     else
         warn("[Loader] Gagal load Rayfield: " .. tostring(result))
-        -- Coba fallback URL
         pcall(function()
-            local fn = loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua'))
+            local fn = _loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua'))
             if fn then Rayfield = fn() end
         end)
     end
@@ -38,7 +43,7 @@ local function LoadScriptFromUrl(url, scriptName)
         if content:sub(1, 5) == "<html" then
             error("URL mengembalikan HTML, bukan script.")
         end
-        local func = loadstring(content)
+        local func = _loadstring(content)
         if func then
             func()
             print("✅ Loaded: " .. scriptName)
@@ -101,95 +106,28 @@ end
 
 -- ============================================================
 -- WEBHOOK SENDER (dipakai semua script via getgenv().SendWebhook)
--- Support embed Discord, anti-spam queue
 -- ============================================================
 local HttpService
 pcall(function() HttpService = game:GetService("HttpService") end)
 
-local function GetPlayerName()
-    local ok, name = pcall(function()
-        return game:GetService("Players").LocalPlayer.Name
-    end)
-    return ok and name or "Unknown"
-end
-
--- Reset queue setiap inject supaya tidak numpuk
-local webhookQueue   = {}
-local webhookRunning = false
-getgenv()._webhookQueue   = webhookQueue
-getgenv()._webhookRunning = false
-
-local function ProcessQueue()
-    if getgenv()._webhookRunning then return end
-    getgenv()._webhookRunning = true
-    task.spawn(function()
-        while #webhookQueue > 0 do
-            local payload = table.remove(webhookQueue, 1)
-            local url = getgenv().WebhookURL
-            if url and url ~= "" and HttpService then
-                pcall(function()
-                    local body = HttpService:JSONEncode(payload)
-                    local ok1 = pcall(function()
-                        if syn and syn.request then
-                            syn.request({
-                                Url     = url,
-                                Method  = "POST",
-                                Headers = {["Content-Type"] = "application/json"},
-                                Body    = body,
-                            })
-                        else error("no syn") end
-                    end)
-                    if not ok1 then
-                        pcall(function()
-                            local fn = http and http.request or request
-                            fn({
-                                Url     = url,
-                                Method  = "POST",
-                                Headers = {["Content-Type"] = "application/json"},
-                                Body    = body,
-                            })
-                        end)
-                    end
-                end)
-            end
-            task.wait(1.5) -- jeda antar pesan, hindari rate limit Discord
-        end
-        getgenv()._webhookRunning = false
-    end)
-end
-
-getgenv().SendWebhook = function(data)
+getgenv().SendWebhook = function(content)
     if not HttpService then return end
-    if not getgenv().WebhookURL or getgenv().WebhookURL == "" then return end
-
-    local payload = {}
-
-    if type(data) == "string" then
-        payload = {
-            content  = data,
-            username = "CAW | " .. GetPlayerName(),
-        }
-    elseif type(data) == "table" then
-        local embed = {
-            title       = data.title or "",
-            description = data.description or nil,
-            color       = data.color or 0x5865F2,
-            fields      = data.fields or {},
-            footer      = data.footer and {text = data.footer} or nil,
-        }
-        -- Hapus key nil supaya JSON bersih
-        if not embed.description then embed.description = nil end
-        if not embed.footer      then embed.footer      = nil end
-
-        payload = {
-            content  = data.content or nil,
-            embeds   = {embed},
-            username = data.username or ("CAW | " .. GetPlayerName()),
-        }
-    end
-
-    table.insert(webhookQueue, payload)
-    ProcessQueue()
+    local url = getgenv().WebhookURL
+    if not url or url == "" then return end
+    pcall(function()
+        local body = HttpService:JSONEncode({content = content})
+        local ok1 = pcall(function()
+            if syn and syn.request then
+                syn.request({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
+            else error("no syn") end
+        end)
+        if not ok1 then
+            pcall(function()
+                local fn = http and http.request or request
+                fn({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
+            end)
+        end
+    end)
 end
 
 -- ============================================================
@@ -291,16 +229,7 @@ WebhookTab:CreateButton({
             return
         end
         task.spawn(function()
-            getgenv().SendWebhook({
-                title       = "✅ Test Webhook Berhasil!",
-                color       = 0x5865F2,  -- biru discord
-                description = "Koneksi webhook dari script kamu berjalan dengan baik.",
-                fields      = {
-                    {name="👤 Player", value=LP.Name,    inline=true},
-                    {name="🎮 Game",   value=game.Name,  inline=true},
-                },
-                footer = "RaihjnDev • CAW Script",
-            })
+            getgenv().SendWebhook("**[TEST]** Webhook dari `"..LP.Name.."` berhasil! ✅\n🎮 Game: `"..game.Name.."`")
         end)
         Rayfield:Notify({Title="Webhook", Content="Test dikirim ke Discord!", Duration=3})
     end,
@@ -328,22 +257,15 @@ WebhookTab:CreateButton({
             Rayfield:Notify({Title="Webhook", Content="Isi URL dulu!", Duration=3}); return
         end
         task.spawn(function()
-            getgenv().SendWebhook({
-                title       = "📊 Stats Manual Report",
-                color       = 0xEB459E,  -- pink
-                fields      = {
-                    {name="👤 Player",              value=LP.Name,                                        inline=true},
-                    {name="🎮 Game",                value=game.Name,                                      inline=true},
-                    {name="\u200b",                 value="\u200b",                                       inline=false},
-                    {name="🏭 Pabrik — Cycle",      value=tostring(getgenv().CycleCount or 0),            inline=true},
-                    {name="📦 Pabrik — Total Drop",  value=tostring(getgenv().TotalDropAllTime or 0).."x", inline=true},
-                    {name="🌿 Pabrik — Seed",        value=tostring(getgenv().SelectedSeed or "?"),        inline=true},
-                    {name="\u200b",                 value="\u200b",                                       inline=false},
-                    {name="⛏️ AutoFarm — Cycle",    value=tostring(getgenv().AFB_CycleCount or 0),        inline=true},
-                    {name="🧱 AutoFarm — Broken",   value=tostring(getgenv().AFB_TotalBroken or 0),       inline=true},
-                },
-                footer = "RaihjnDev • CAW Script",
-            })
+            getgenv().SendWebhook(
+                "**[STATS] Manual Report**\n"..
+                "👤 `"..LP.Name.."`\n"..
+                "🔄 Cycle Pabrik: `"..(getgenv().CycleCount or 0).."`\n"..
+                "📦 Total Drop: `"..(getgenv().TotalDropAllTime or 0).."x`\n"..
+                "🌱 Seed: `"..(getgenv().SelectedSeed or "?").."`\n"..
+                "⛏️ AutoFarm Cycle: `"..(getgenv().AFB_CycleCount or 0).."`\n"..
+                "🧱 Total Broken: `"..(getgenv().AFB_TotalBroken or 0).."`"
+            )
         end)
         Rayfield:Notify({Title="Webhook", Content="Stats dikirim!", Duration=3})
     end,
