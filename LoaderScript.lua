@@ -83,6 +83,13 @@ end
 local HttpService
 pcall(function() HttpService = game:GetService("HttpService") end)
 
+local function GetPlayerName()
+    local ok, name = pcall(function()
+        return game:GetService("Players").LocalPlayer.Name
+    end)
+    return ok and name or "Unknown"
+end
+
 -- Reset queue setiap inject supaya tidak numpuk
 local webhookQueue   = {}
 local webhookRunning = false
@@ -137,7 +144,7 @@ getgenv().SendWebhook = function(data)
     if type(data) == "string" then
         payload = {
             content  = data,
-            username = "CAW | " .. LP.Name,
+            username = "CAW | " .. GetPlayerName(),
         }
     elseif type(data) == "table" then
         local embed = {
@@ -154,7 +161,7 @@ getgenv().SendWebhook = function(data)
         payload = {
             content  = data.content or nil,
             embeds   = {embed},
-            username = data.username or ("CAW | " .. LP.Name),
+            username = data.username or ("CAW | " .. GetPlayerName()),
         }
     end
 
