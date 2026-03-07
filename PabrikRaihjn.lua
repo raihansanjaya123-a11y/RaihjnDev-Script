@@ -1,5 +1,5 @@
 -- ============================================================
--- SCRIPT PABRIK v2 - DENGAN WEBHOOK, BLOCK DETECTOR, SMART HARVEST
+-- SCRIPT PABRIK v3 - FIXED LOAD + WEBHOOK + BLOCK DETECTOR
 -- ============================================================
 
 if getgenv().RaihjnHeartbeatPabrik then
@@ -12,44 +12,49 @@ local LP          = Players.LocalPlayer
 local RS          = game:GetService("ReplicatedStorage")
 local RunService  = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
-local HttpService = game:GetService("HttpService")
+
+-- HttpService aman di pcall
+local HttpService
+pcall(function() HttpService = game:GetService("HttpService") end)
 
 LP.Idled:Connect(function()
     VirtualUser:CaptureController()
     VirtualUser:ClickButton2(Vector2.new())
 end)
 
--- Globals
-getgenv().GridSize       = 4.5
-getgenv().HitCount       = 3
-getgenv().EnablePabrik   = false
-getgenv().PabrikStartX   = 0
-getgenv().PabrikEndX     = 10
-getgenv().PabrikStartY   = 37
-getgenv().PabrikEndY     = 37
-getgenv().GrowthTime     = 30
-getgenv().BreakPosX      = 0
-getgenv().BreakPosY      = 0
-getgenv().DropPosX       = 0
-getgenv().DropPosY       = 0
-getgenv().BlockThreshold = 20
-getgenv().KeepSeedAmt    = 20
-getgenv().SelectedSeed   = ""
-getgenv().SelectedBlock  = ""
+-- ============================================================
+-- GLOBALS (hanya set kalau belum ada, supaya tidak reset saat reinject)
+-- ============================================================
+getgenv().GridSize       = getgenv().GridSize       or 4.5
+getgenv().HitCount       = getgenv().HitCount       or 3
+getgenv().EnablePabrik   = getgenv().EnablePabrik   or false
+getgenv().PabrikStartX   = getgenv().PabrikStartX   or 0
+getgenv().PabrikEndX     = getgenv().PabrikEndX     or 10
+getgenv().PabrikStartY   = getgenv().PabrikStartY   or 37
+getgenv().PabrikEndY     = getgenv().PabrikEndY     or 37
+getgenv().GrowthTime     = getgenv().GrowthTime     or 30
+getgenv().BreakPosX      = getgenv().BreakPosX      or 0
+getgenv().BreakPosY      = getgenv().BreakPosY      or 0
+getgenv().DropPosX       = getgenv().DropPosX       or 0
+getgenv().DropPosY       = getgenv().DropPosY       or 0
+getgenv().BlockThreshold = getgenv().BlockThreshold or 20
+getgenv().KeepSeedAmt    = getgenv().KeepSeedAmt    or 20
+getgenv().SelectedSeed   = getgenv().SelectedSeed   or ""
+getgenv().SelectedBlock  = getgenv().SelectedBlock  or ""
 getgenv().IsGhosting     = false
 getgenv().HoldCFrame     = nil
-getgenv().PlantHitCount  = 2
-getgenv().YGap           = 2
-getgenv().PlaceDelay     = 0.1
-getgenv().DropDelay      = 0.5
-getgenv().StepDelay      = 0.1
-getgenv().BreakDelay     = 0.15
-
--- Stats untuk webhook
+getgenv().PlantHitCount  = getgenv().PlantHitCount  or 2
+getgenv().YGap           = getgenv().YGap           or 2
+getgenv().PlaceDelay     = getgenv().PlaceDelay     or 0.1
+getgenv().DropDelay      = getgenv().DropDelay      or 0.5
+getgenv().StepDelay      = getgenv().StepDelay      or 0.1
+getgenv().BreakDelay     = getgenv().BreakDelay     or 0.15
 getgenv().TotalDropAllTime = getgenv().TotalDropAllTime or 0
-getgenv().CycleCount       = getgenv().CycleCount or 0
+getgenv().CycleCount       = getgenv().CycleCount       or 0
 
--- Load modul
+-- ============================================================
+-- LOAD MODUL (semua pakai pcall)
+-- ============================================================
 local PlayerMovement
 pcall(function() PlayerMovement = require(LP.PlayerScripts:WaitForChild("PlayerMovement")) end)
 
@@ -60,24 +65,27 @@ local UIManager
 pcall(function() UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager")) end)
 
 -- ============================================================
--- WEBHOOK
+-- WEBHOOK (safe, tidak crash kalau HttpService nil)
 -- ============================================================
 local function SendWebhook(content)
+    if not HttpService then return end
     local url = getgenv().WebhookURL
     if not url or url == "" then return end
     pcall(function()
         local body = HttpService:JSONEncode({content = content})
-        syn and syn.request and syn.request({
-            Url    = url,
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body   = body,
-        }) or (http and http.request or request)({
-            Url    = url,
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body   = body,
-        })
+        local ok1 = pcall(function()
+            if syn and syn.request then
+                syn.request({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
+            else
+                error("no syn")
+            end
+        end)
+        if not ok1 then
+            pcall(function()
+                local fn = http and http.request or request
+                fn({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
+            end)
+        end
     end)
 end
 
@@ -148,6 +156,7 @@ local function ScanAvailableItems()
     for _, item in ipairs(GetAllItem()) do
         if not seen[item.Id] then seen[item.Id]=true; table.insert(items, item.Id) end
     end
+    table.sort(items)
     if #items == 0 then items = {"Kosong"} end
     return items
 end
@@ -206,38 +215,25 @@ local function EnsurePosition(targetX, targetY)
 end
 
 -- ============================================================
--- DETEKSI BLOCK PENGHALANG
--- Cek apakah ada block solid di tile (gx, gy) di world
+-- DETEKSI BLOCK PENGHALANG (aman, no raycast)
 -- ============================================================
 local function IsBlockedTile(gx, gy)
-    -- Cek di Blocks/Tiles folder di workspace
-    local worldPos = Vector3.new(gx * getgenv().GridSize, gy * getgenv().GridSize, 0)
-    for _, fname in ipairs({"Blocks","Tiles","World","Map","Chunks","Terrain"}) do
+    -- Hanya scan folder, tidak pakai Raycast (lebih aman di mobile executor)
+    for _, fname in ipairs({"Blocks","Tiles","World","Map","Chunks"}) do
         local folder = workspace:FindFirstChild(fname)
         if folder then
             for _, obj in pairs(folder:GetDescendants()) do
                 if obj:IsA("BasePart") then
-                    local dx = math.floor(obj.Position.X / getgenv().GridSize + 0.5)
-                    local dy = math.floor(obj.Position.Y / getgenv().GridSize + 0.5)
-                    if dx == gx and dy == gy then
-                        -- Ada block solid di tile ini
+                    local ok2, dx, dy = pcall(function()
+                        return
+                            math.floor(obj.Position.X / getgenv().GridSize + 0.5),
+                            math.floor(obj.Position.Y / getgenv().GridSize + 0.5)
+                    end)
+                    if ok2 and dx == gx and dy == gy then
                         return true
                     end
                 end
             end
-        end
-    end
-    -- Raycast versi cepat (opsional fallback)
-    local ray = workspace:Raycast(
-        worldPos + Vector3.new(0, 0, 5),
-        Vector3.new(0, 0, -10),
-        RaycastParams.new()
-    )
-    if ray and ray.Instance then
-        local dx = math.floor(ray.Instance.Position.X / getgenv().GridSize + 0.5)
-        local dy = math.floor(ray.Instance.Position.Y / getgenv().GridSize + 0.5)
-        if dx == gx and dy == gy and ray.Instance.Parent ~= workspace:FindFirstChild("Hitbox") then
-            return true
         end
     end
     return false
@@ -305,11 +301,25 @@ local function CheckDropsAtGrid(gx, gy)
     return false
 end
 
+local function GetDropRemote()
+    local rem = RS:FindFirstChild("Remotes")
+    if not rem then return nil end
+    return rem:FindFirstChild("PlayerDrop") or rem:FindFirstChild("PlayerDropItem")
+end
+
+local function GetPromptRemote()
+    local mgr = RS:FindFirstChild("Managers")
+    if not mgr then return nil end
+    local uim = mgr:FindFirstChild("UIManager")
+    if not uim then return nil end
+    return uim:FindFirstChild("UIPromptEvent")
+end
+
 local function DropItemLogic(targetID, dropAmount)
     local slot    = GetSlotByItemID(targetID)
     if not slot then return false end
-    local dropR   = RS:WaitForChild("Remotes"):FindFirstChild("PlayerDrop") or RS:WaitForChild("Remotes"):FindFirstChild("PlayerDropItem")
-    local promptR = RS:WaitForChild("Managers"):WaitForChild("UIManager"):FindFirstChild("UIPromptEvent")
+    local dropR   = GetDropRemote()
+    local promptR = GetPromptRemote()
     if dropR and promptR then
         pcall(function() dropR:FireServer(slot) end)
         task.wait(0.2)
@@ -339,19 +349,6 @@ local function ForceRestoreUI()
             if type(UIManager.ShowUI)=="function"  then UIManager:ShowUI() end
         end
     end)
-    pcall(function()
-        local targetUIs = {"topbar","gems","playerui","hotbar","crosshair","mainhud","stats","inventory","backpack","menu","bottombar","buttons"}
-        for _, gui in pairs(LP.PlayerGui:GetDescendants()) do
-            if gui:IsA("Frame") or gui:IsA("ScreenGui") or gui:IsA("ImageLabel") then
-                local gName = string.lower(gui.Name)
-                for _, tName in ipairs(targetUIs) do
-                    if string.find(gName, tName) and not string.find(gName, "prompt") then
-                        if gui:IsA("ScreenGui") then gui.Enabled=true else gui.Visible=true end
-                    end
-                end
-            end
-        end
-    end)
 end
 
 -- ============================================================
@@ -360,12 +357,14 @@ end
 getgenv().RaihjnHeartbeatPabrik = RunService.Heartbeat:Connect(function()
     if getgenv().IsGhosting and getgenv().HoldCFrame then
         local c = LP.Character
-        if c and c:FindFirstChild("HumanoidRootPart") then
-            c.HumanoidRootPart.CFrame = getgenv().HoldCFrame
+        if c then
+            local hrp = c:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.CFrame = getgenv().HoldCFrame end
         end
         if PlayerMovement then pcall(function()
             PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0
-            PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true; PlayerMovement.Jumping=false
+            PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true
+            PlayerMovement.Jumping=false
         end) end
     end
 end)
@@ -396,30 +395,146 @@ local function StopGhost(state)
     state.hrp.CFrame     = state.cframe
     if PlayerMovement then pcall(function()
         PlayerMovement.Position = state.cframe.Position
-        PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0; PlayerMovement.VelocityZ=0
-        PlayerMovement.Grounded = true
+        PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0
+        PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true
     end) end
 end
 
-local RemotePlace = RS:WaitForChild("Remotes"):WaitForChild("PlayerPlaceItem")
-local RemoteBreak = RS:WaitForChild("Remotes"):WaitForChild("PlayerFist")
+-- ============================================================
+-- REMOTES (lazy load, tidak crash saat load script)
+-- ============================================================
+local function GetRemotePlace()
+    return RS:FindFirstChild("Remotes") and RS.Remotes:FindFirstChild("PlayerPlaceItem")
+end
+local function GetRemoteBreak()
+    return RS:FindFirstChild("Remotes") and RS.Remotes:FindFirstChild("PlayerFist")
+end
 
 local function Doplant(gx, gy, slot)
+    local rem = GetRemotePlace()
+    if not rem then return end
     local v2 = Vector2.new(gx, gy)
     for i = 1, getgenv().PlantHitCount do
-        pcall(function() RemotePlace:FireServer(v2, slot) end)
+        pcall(function() rem:FireServer(v2, slot) end)
         if i < getgenv().PlantHitCount then task.wait(getgenv().PlaceDelay) end
     end
 end
 
 local function DoBreak(gx, gy)
+    local rem = GetRemoteBreak()
+    if not rem then return end
     local v2 = Vector2.new(gx, gy)
     for _ = 1, getgenv().HitCount do
         if not getgenv().EnablePabrik then break end
         SetHitBoxPos(gx, gy)
-        pcall(function() RemoteBreak:FireServer(v2) end)
+        pcall(function() rem:FireServer(v2) end)
         task.wait(getgenv().BreakDelay)
     end
+end
+
+-- ============================================================
+-- HELPER: Farm Block loop (dipakai 2x, di awal dan fase 4)
+-- ============================================================
+local function DoFarmBlockLoop(breakPosX, breakPosY)
+    local BreakTarget = Vector2.new(breakPosX - 1, breakPosY)
+    local remPlace = GetRemotePlace()
+    local remBreak = GetRemoteBreak()
+    if not remPlace or not remBreak then
+        warn("[Block] Remote tidak ada!"); return
+    end
+    while getgenv().EnablePabrik do
+        local currentAmt = GetItemAmountByID(getgenv().SelectedBlock)
+        if currentAmt <= getgenv().BlockThreshold then
+            print("[Block] Threshold. Amt:", currentAmt); break
+        end
+        local blockSlot = GetSlotByItemID(getgenv().SelectedBlock)
+        if not blockSlot then print("[Block] Slot nil!"); break end
+
+        pcall(function() remPlace:FireServer(BreakTarget, blockSlot) end)
+        task.wait(0.15)
+
+        for _ = 1, getgenv().HitCount do
+            if not getgenv().EnablePabrik then break end
+            SetHitBoxPos(breakPosX, breakPosY)
+            pcall(function() remBreak:FireServer(BreakTarget) end)
+            task.wait(getgenv().BreakDelay)
+        end
+
+        if CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) then
+            local char = LP.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            local mh   = GetMyHitbox()
+            local eCF  = hrp and hrp.CFrame
+            local eHCF = mh  and mh.CFrame
+            local ePM
+            if PlayerMovement then pcall(function() ePM = PlayerMovement.Position end) end
+
+            if hrp then hrp.Anchored=true; getgenv().HoldCFrame=eCF; getgenv().IsGhosting=true end
+            if hum then
+                local anim   = hum:FindFirstChildOfClass("Animator")
+                local tracks = anim and anim:GetPlayingAnimationTracks() or hum:GetPlayingAnimationTracks()
+                for _, t in ipairs(tracks) do t:Stop(0) end
+            end
+
+            walkToGrid(BreakTarget.X, BreakTarget.Y)
+            EnsurePosition(BreakTarget.X, BreakTarget.Y)
+            local t = 0
+            while CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) and t < 15 and getgenv().EnablePabrik do
+                task.wait(0.1); t = t + 1
+            end
+            task.wait(0.1)
+            walkToGrid(breakPosX, breakPosY)
+            EnsurePosition(breakPosX, breakPosY)
+
+            if hrp and eCF then
+                hrp.AssemblyLinearVelocity  = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+                if mh and eHCF then mh.CFrame = eHCF; mh.AssemblyLinearVelocity = Vector3.zero end
+                hrp.CFrame = eCF
+                if PlayerMovement and ePM then pcall(function()
+                    PlayerMovement.Position=ePM; PlayerMovement.OldPosition=ePM
+                    PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0
+                    PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true
+                end) end
+                RunService.Heartbeat:Wait(); RunService.Heartbeat:Wait()
+                hrp.Anchored = false
+            end
+            getgenv().IsGhosting = false
+        end
+    end
+end
+
+-- ============================================================
+-- HELPER: Drop seed loop
+-- ============================================================
+local function DoDropSeedLoop()
+    local dropped = 0
+    local seedAmt = GetItemAmountByID(getgenv().SelectedSeed)
+    if seedAmt <= getgenv().KeepSeedAmt then return 0 end
+
+    local gs = StartGhost()
+    walkToGrid(getgenv().DropPosX, getgenv().DropPosY)
+    EnsurePosition(getgenv().DropPosX, getgenv().DropPosY)
+    task.wait(1.5)
+
+    while getgenv().EnablePabrik do
+        local cur    = GetItemAmountByID(getgenv().SelectedSeed)
+        local toDrop = cur - getgenv().KeepSeedAmt
+        if toDrop <= 0 then break end
+        local batch = math.min(toDrop, 200)
+        local ok    = DropItemLogic(getgenv().SelectedSeed, batch)
+        if ok then
+            dropped = dropped + batch
+            task.wait(getgenv().DropDelay + 0.3)
+        else
+            break
+        end
+    end
+
+    StopGhost(gs)
+    ForceRestoreUI()
+    return dropped
 end
 
 -- ============================================================
@@ -428,117 +543,47 @@ end
 task.spawn(function()
     while true do
         task.wait(1)
-        local success, err = pcall(function()
+        local ok, err = pcall(function()
             if not getgenv().EnablePabrik then return end
             if getgenv().SelectedSeed == "" or getgenv().SelectedBlock == "" then
-                print("Menunggu seed dan block dipilih..."); return
+                print("[Pabrik] Tunggu seed/block dipilih..."); return
             end
 
-            -- -----------------------------------------------
-            -- CEK AWAL: block sudah banyak, farm block dulu
-            -- -----------------------------------------------
+            -- CEK AWAL: block sudah banyak
             local blockAmtAwal = GetItemAmountByID(getgenv().SelectedBlock)
             if blockAmtAwal > getgenv().BlockThreshold then
                 print("[Awal] Block banyak ("..blockAmtAwal.."), farm block dulu")
                 walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
                 EnsurePosition(getgenv().BreakPosX, getgenv().BreakPosY)
                 task.wait(0.5)
-                local BreakTargetAwal = Vector2.new(getgenv().BreakPosX-1, getgenv().BreakPosY)
-                while getgenv().EnablePabrik do
-                    local amt = GetItemAmountByID(getgenv().SelectedBlock)
-                    if amt <= getgenv().BlockThreshold then break end
-                    local bslot = GetSlotByItemID(getgenv().SelectedBlock)
-                    if not bslot then break end
-                    pcall(function() RemotePlace:FireServer(BreakTargetAwal, bslot) end)
-                    task.wait(0.15)
-                    for _ = 1, getgenv().HitCount do
-                        if not getgenv().EnablePabrik then break end
-                        SetHitBoxPos(getgenv().BreakPosX, getgenv().BreakPosY)
-                        pcall(function() RemoteBreak:FireServer(BreakTargetAwal) end)
-                        task.wait(getgenv().BreakDelay)
-                    end
-                    if CheckDropsAtGrid(BreakTargetAwal.X, BreakTargetAwal.Y) then
-                        local char=LP.Character; local hrp=char and char:FindFirstChild("HumanoidRootPart")
-                        local hum=char and char:FindFirstChildOfClass("Humanoid"); local mh=GetMyHitbox()
-                        local eCF=hrp and hrp.CFrame; local eHCF=mh and mh.CFrame; local ePM
-                        if PlayerMovement then pcall(function() ePM=PlayerMovement.Position end) end
-                        if hrp then hrp.Anchored=true; getgenv().HoldCFrame=eCF; getgenv().IsGhosting=true end
-                        if hum then
-                            local anim=hum:FindFirstChildOfClass("Animator")
-                            local tracks=anim and anim:GetPlayingAnimationTracks() or hum:GetPlayingAnimationTracks()
-                            for _,t in ipairs(tracks) do t:Stop(0) end
-                        end
-                        walkToGrid(BreakTargetAwal.X, BreakTargetAwal.Y)
-                        EnsurePosition(BreakTargetAwal.X, BreakTargetAwal.Y)
-                        local t=0
-                        while CheckDropsAtGrid(BreakTargetAwal.X, BreakTargetAwal.Y) and t<15 and getgenv().EnablePabrik do task.wait(0.1); t=t+1 end
-                        task.wait(0.1)
-                        walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
-                        EnsurePosition(getgenv().BreakPosX, getgenv().BreakPosY)
-                        if hrp and eCF then
-                            hrp.AssemblyLinearVelocity=Vector3.zero; hrp.AssemblyAngularVelocity=Vector3.zero
-                            if mh and eHCF then mh.CFrame=eHCF; mh.AssemblyLinearVelocity=Vector3.zero end
-                            hrp.CFrame=eCF
-                            if PlayerMovement and ePM then pcall(function()
-                                PlayerMovement.Position=ePM; PlayerMovement.OldPosition=ePM
-                                PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0; PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true
-                            end) end
-                            RunService.Heartbeat:Wait(); RunService.Heartbeat:Wait()
-                            hrp.Anchored=false
-                        end
-                        getgenv().IsGhosting=false
-                    end
-                end
+                DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
                 if not getgenv().EnablePabrik then return end
                 -- Drop seed sebelum plant
-                local seedAmtAwal = GetItemAmountByID(getgenv().SelectedSeed)
-                if seedAmtAwal > getgenv().KeepSeedAmt then
-                    local gs = StartGhost()
-                    walkToGrid(getgenv().DropPosX, getgenv().DropPosY)
-                    EnsurePosition(getgenv().DropPosX, getgenv().DropPosY)
-                    task.wait(1.5)
-                    local droppedAwal = 0
-                    while getgenv().EnablePabrik do
-                        local cur=GetItemAmountByID(getgenv().SelectedSeed); local toDrop=cur-getgenv().KeepSeedAmt
-                        if toDrop<=0 then break end
-                        local ok=DropItemLogic(getgenv().SelectedSeed, math.min(toDrop,200))
-                        if ok then droppedAwal=droppedAwal+math.min(toDrop,200); task.wait(getgenv().DropDelay+0.3) else break end
-                    end
-                    StopGhost(gs)
-                    ForceRestoreUI()
-                    if droppedAwal > 0 then
-                        getgenv().TotalDropAllTime = getgenv().TotalDropAllTime + droppedAwal
-                    end
-                end
+                local d = DoDropSeedLoop()
+                if d > 0 then getgenv().TotalDropAllTime = getgenv().TotalDropAllTime + d end
                 return
             end
 
-            -- -----------------------------------------------
-            -- FASE 1: PLANTING (skip tile yang ada block)
-            -- -----------------------------------------------
+            -- FASE 1: PLANTING
             local plantPath = ZigzagPath(
                 getgenv().PabrikStartX, getgenv().PabrikEndX,
-                getgenv().PabrikStartY, getgenv().PabrikEndY, getgenv().YGap
+                getgenv().PabrikStartY, getgenv().PabrikEndY,
+                getgenv().YGap
             )
             print("[Plant] Total tile:", #plantPath)
 
             local lastPlantedX, lastPlantedY = nil, nil
-            local plantedTiles = {}  -- simpan urutan tile yang berhasil di-plant
-            local skippedCount  = 0
+            local plantedTiles = {}
+            local skippedCount = 0
 
             for i, point in ipairs(plantPath) do
                 if not getgenv().EnablePabrik then break end
-
-                -- Cek block penghalang sebelum plant
                 if IsBlockedTile(point.X, point.Y) then
-                    print("[Plant] Tile", point.X, point.Y, "ada block, skip")
                     skippedCount = skippedCount + 1
-                    -- jangan tambah ke plantedTiles, lanjut
                 else
                     local slot = GetSlotByItemID(getgenv().SelectedSeed)
                     if not slot then
-                        print("[Plant] Seed habis di tile", i)
-                        break
+                        print("[Plant] Seed habis di tile", i); break
                     end
                     walkToGrid(point.X, point.Y)
                     EnsurePosition(point.X, point.Y)
@@ -551,32 +596,23 @@ task.spawn(function()
                 end
             end
 
-            -- Log berapa yang di-skip
-            if skippedCount > 0 then
-                print("[Plant] Skip "..skippedCount.." tile karena ada block")
-            end
-
-            -- Tentukan tile terakhir yang di-plant
             local plantedCount = #plantedTiles
-            print("[Plant] Selesai. Planted:", plantedCount, "tile. Terakhir:", tostring(lastPlantedX), tostring(lastPlantedY))
+            print("[Plant] Selesai. Planted:", plantedCount, "Skip:", skippedCount,
+                  "Terakhir:", tostring(lastPlantedX), tostring(lastPlantedY))
 
-            -- Kirim webhook: info plant
             if lastPlantedX then
                 task.spawn(function()
                     SendWebhook(
-                        "**[PABRIK] PLANT SELESAI**\n" ..
-                        "👤 Player: `" .. LP.Name .. "`\n" ..
-                        "🌱 Seed: `" .. getgenv().SelectedSeed .. "`\n" ..
-                        "📍 Plant sampai: `X=" .. lastPlantedX .. " Y=" .. lastPlantedY .. "`\n" ..
-                        "✅ Total tile di-plant: `" .. plantedCount .. "`\n" ..
-                        "⛔ Tile di-skip (ada block): `" .. skippedCount .. "`"
+                        "**[PABRIK] PLANT SELESAI**\n"..
+                        "👤 `"..LP.Name.."`\n"..
+                        "🌱 Seed: `"..getgenv().SelectedSeed.."`\n"..
+                        "📍 Sampai: `X="..lastPlantedX.." Y="..lastPlantedY.."`\n"..
+                        "✅ Di-plant: `"..plantedCount.."` | ⛔ Skip: `"..skippedCount.."`"
                     )
                 end)
             end
 
-            -- -----------------------------------------------
             -- FASE 2: WAITING
-            -- -----------------------------------------------
             if not getgenv().EnablePabrik then return end
             print("[Wait] Tunggu", getgenv().GrowthTime, "detik")
             for _ = 1, getgenv().GrowthTime do
@@ -584,23 +620,17 @@ task.spawn(function()
                 task.wait(1)
             end
 
-            -- -----------------------------------------------
             -- FASE 3: HARVEST (hanya tile yang di-plant)
-            -- -----------------------------------------------
             if not getgenv().EnablePabrik then return end
-            print("[Harvest] Mulai, harvest", #plantedTiles, "tile yang di-plant")
-
+            print("[Harvest] Mulai,", #plantedTiles, "tile")
             for _, point in ipairs(plantedTiles) do
                 if not getgenv().EnablePabrik then break end
                 walkToGrid(point.X, point.Y)
                 EnsurePosition(point.X, point.Y)
-                if not getgenv().EnablePabrik then break end
                 DoBreak(point.X, point.Y)
             end
-
-            -- Sweep balik TANPA ghosting (pickup biasa)
+            -- Sweep balik tanpa ghosting
             if getgenv().EnablePabrik then
-                print("[Harvest] Sweep balik pickup")
                 for i = #plantedTiles, 1, -1 do
                     if not getgenv().EnablePabrik then break end
                     walkToGrid(plantedTiles[i].X, plantedTiles[i].Y)
@@ -609,113 +639,36 @@ task.spawn(function()
                 end
             end
 
-            -- -----------------------------------------------
             -- FASE 4: FARM BLOCK
-            -- -----------------------------------------------
             if not getgenv().EnablePabrik then return end
             print("[Block] Farm block")
             walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
             EnsurePosition(getgenv().BreakPosX, getgenv().BreakPosY)
             task.wait(0.5)
-            local BreakTarget = Vector2.new(getgenv().BreakPosX-1, getgenv().BreakPosY)
+            DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
 
-            while getgenv().EnablePabrik do
-                local currentAmt = GetItemAmountByID(getgenv().SelectedBlock)
-                if currentAmt <= getgenv().BlockThreshold then print("[Block] Threshold. Amt:", currentAmt); break end
-                local blockSlot = GetSlotByItemID(getgenv().SelectedBlock)
-                if not blockSlot then print("[Block] Slot nil!"); break end
-                pcall(function() RemotePlace:FireServer(BreakTarget, blockSlot) end)
-                task.wait(0.15)
-                for _ = 1, getgenv().HitCount do
-                    if not getgenv().EnablePabrik then break end
-                    SetHitBoxPos(getgenv().BreakPosX, getgenv().BreakPosY)
-                    pcall(function() RemoteBreak:FireServer(BreakTarget) end)
-                    task.wait(getgenv().BreakDelay)
-                end
-                if CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) then
-                    local char=LP.Character; local hrp=char and char:FindFirstChild("HumanoidRootPart")
-                    local hum=char and char:FindFirstChildOfClass("Humanoid"); local mh=GetMyHitbox()
-                    local eCF=hrp and hrp.CFrame; local eHCF=mh and mh.CFrame; local ePM
-                    if PlayerMovement then pcall(function() ePM=PlayerMovement.Position end) end
-                    if hrp then hrp.Anchored=true; getgenv().HoldCFrame=eCF; getgenv().IsGhosting=true end
-                    if hum then
-                        local anim=hum:FindFirstChildOfClass("Animator")
-                        local tracks=anim and anim:GetPlayingAnimationTracks() or hum:GetPlayingAnimationTracks()
-                        for _,t in ipairs(tracks) do t:Stop(0) end
-                    end
-                    walkToGrid(BreakTarget.X, BreakTarget.Y)
-                    EnsurePosition(BreakTarget.X, BreakTarget.Y)
-                    local t=0
-                    while CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) and t<15 and getgenv().EnablePabrik do task.wait(0.1); t=t+1 end
-                    task.wait(0.1)
-                    walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
-                    EnsurePosition(getgenv().BreakPosX, getgenv().BreakPosY)
-                    if hrp and eCF then
-                        hrp.AssemblyLinearVelocity=Vector3.zero; hrp.AssemblyAngularVelocity=Vector3.zero
-                        if mh and eHCF then mh.CFrame=eHCF; mh.AssemblyLinearVelocity=Vector3.zero end
-                        hrp.CFrame=eCF
-                        if PlayerMovement and ePM then pcall(function()
-                            PlayerMovement.Position=ePM; PlayerMovement.OldPosition=ePM
-                            PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0; PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true
-                        end) end
-                        RunService.Heartbeat:Wait(); RunService.Heartbeat:Wait()
-                        hrp.Anchored=false
-                    end
-                    getgenv().IsGhosting=false
-                end
-            end
-
-            -- -----------------------------------------------
-            -- FASE 5: DROP SEED + WEBHOOK
-            -- -----------------------------------------------
+            -- FASE 5: DROP SEED
             if not getgenv().EnablePabrik then return end
-            local currentSeedAmt = GetItemAmountByID(getgenv().SelectedSeed)
-            print("[Drop] Seed:", currentSeedAmt, "Keep:", getgenv().KeepSeedAmt)
-            local droppedThisCycle = 0
-
-            if currentSeedAmt > getgenv().KeepSeedAmt then
-                local gs = StartGhost()
-                walkToGrid(getgenv().DropPosX, getgenv().DropPosY)
-                EnsurePosition(getgenv().DropPosX, getgenv().DropPosY)
-                task.wait(1.5)
-                while getgenv().EnablePabrik do
-                    local cur    = GetItemAmountByID(getgenv().SelectedSeed)
-                    local toDrop = cur - getgenv().KeepSeedAmt
-                    if toDrop <= 0 then break end
-                    local batch = math.min(toDrop, 200)
-                    local ok    = DropItemLogic(getgenv().SelectedSeed, batch)
-                    if ok then
-                        droppedThisCycle = droppedThisCycle + batch
-                        task.wait(getgenv().DropDelay + 0.3)
-                    else
-                        break
-                    end
-                end
-                StopGhost(gs)
-                ForceRestoreUI()
-            end
-
-            -- Update total
+            local droppedThisCycle = DoDropSeedLoop()
             getgenv().TotalDropAllTime = getgenv().TotalDropAllTime + droppedThisCycle
             getgenv().CycleCount       = getgenv().CycleCount + 1
 
-            print("[Drop] Cycle drop:", droppedThisCycle, "| Total all time:", getgenv().TotalDropAllTime)
+            print("[Drop] Cycle:", droppedThisCycle, "| Total:", getgenv().TotalDropAllTime)
 
-            -- Kirim webhook: info drop per cycle
             task.spawn(function()
                 SendWebhook(
-                    "**[PABRIK] SIKLUS #" .. getgenv().CycleCount .. " SELESAI**\n" ..
-                    "👤 Player: `" .. LP.Name .. "`\n" ..
-                    "🌱 Seed dropped cycle ini: `" .. droppedThisCycle .. "x`\n" ..
-                    "📦 Total seed dropped all time: `" .. getgenv().TotalDropAllTime .. "x`\n" ..
-                    "📍 Plant terakhir di: `X=" .. tostring(lastPlantedX) .. " Y=" .. tostring(lastPlantedY) .. "`\n" ..
-                    "🌿 Tile di-plant: `" .. plantedCount .. "` | Skip (block): `" .. skippedCount .. "`"
+                    "**[PABRIK] SIKLUS #"..getgenv().CycleCount.." SELESAI**\n"..
+                    "👤 `"..LP.Name.."`\n"..
+                    "🌱 Drop cycle ini: `"..droppedThisCycle.."x`\n"..
+                    "📦 Total all time: `"..getgenv().TotalDropAllTime.."x`\n"..
+                    "📍 Plant terakhir: `X="..tostring(lastPlantedX).." Y="..tostring(lastPlantedY).."`\n"..
+                    "🌿 Plant: `"..plantedCount.."` | Skip: `"..skippedCount.."`"
                 )
             end)
 
             print("[Pabrik] Siklus", getgenv().CycleCount, "selesai!")
         end)
-        if not success then warn("Error loop Pabrik:", err) end
+        if not ok then warn("[Pabrik] Error:", err) end
     end
 end)
 
@@ -723,21 +676,25 @@ end)
 -- UI
 -- ============================================================
 local Rayfield = getgenv().Rayfield
-if not Rayfield then warn("Rayfield tidak ditemukan!"); return end
-
+if not Rayfield then warn("[Pabrik] Rayfield nil!"); return end
 local MainTab = getgenv().RaihjnTab
-if not MainTab then warn("RaihjnTab tidak ditemukan!"); return end
+if not MainTab then warn("[Pabrik] RaihjnTab nil!"); return end
 
-local ok, err = pcall(function()
+local uiOk, uiErr = pcall(function()
+
     MainTab:CreateSection("Delay Settings")
     MainTab:CreateInput({Name="Plant Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().PlaceDelay=n end end})
+    MainTab:CreateInput({Name="Plant Hit Count", PlaceholderText="2", RemoveTextAfterFocusLost=false,
+        Callback=function(t) local n=tonumber(t); if n then getgenv().PlantHitCount=n end end})
     MainTab:CreateInput({Name="Hit Count", PlaceholderText="3", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().HitCount=n end end})
     MainTab:CreateInput({Name="Break Delay", PlaceholderText="0.15", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().BreakDelay=n end end})
     MainTab:CreateInput({Name="Step Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().StepDelay=n end end})
+    MainTab:CreateInput({Name="Y Gap", PlaceholderText="2", RemoveTextAfterFocusLost=false,
+        Callback=function(t) local n=tonumber(t); if n and n>=1 then getgenv().YGap=n end end})
     MainTab:CreateInput({Name="Growth Time", PlaceholderText="Waktu tumbuh (detik)", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().GrowthTime=n end end})
 
@@ -745,29 +702,29 @@ local ok, err = pcall(function()
     local availableItems = ScanAvailableItems()
 
     MainTab:CreateDropdown({
-        Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="BlockDropdown",
+        Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikBlockDrop",
         Callback=function(opt)
             local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
-            getgenv().SelectedBlock=id
-            Rayfield:Notify({Title="Block Selected", Content=id, Duration=3})
+            getgenv().SelectedBlock = id
+            Rayfield:Notify({Title="Block", Content=id, Duration=2})
         end,
     })
     MainTab:CreateDropdown({
-        Name="Select Seed", Options=availableItems, CurrentOption=availableItems[1], Flag="SeedDropdown",
+        Name="Select Seed", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikSeedDrop",
         Callback=function(opt)
             local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
-            getgenv().SelectedSeed=id
-            Rayfield:Notify({Title="Seed Selected", Content=id, Duration=3})
+            getgenv().SelectedSeed = id
+            Rayfield:Notify({Title="Seed", Content=id, Duration=2})
         end,
     })
-    MainTab:CreateInput({Name="Keep Seed Amount", PlaceholderText="Jumlah seed disimpan", RemoveTextAfterFocusLost=false,
+    MainTab:CreateInput({Name="Keep Seed Amount", PlaceholderText="20", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().KeepSeedAmt=n end end})
-    MainTab:CreateInput({Name="Block Threshold", PlaceholderText="Jumlah block minimum", RemoveTextAfterFocusLost=false,
+    MainTab:CreateInput({Name="Block Threshold", PlaceholderText="20", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().BlockThreshold=n end end})
 
     MainTab:CreateToggle({
         Name="Enable Pabrik", CurrentValue=false, Flag="EnablePabrikToggle",
-        Callback=function(v) getgenv().EnablePabrik=v; print("EnablePabrik:", v) end,
+        Callback=function(v) getgenv().EnablePabrik=v; print("[Pabrik] Enable:", v) end,
     })
 
     MainTab:CreateSection("Farm Position")
@@ -786,11 +743,12 @@ local ok, err = pcall(function()
     local BPY = MainTab:CreateInput({Name="Break Pos Y", PlaceholderText="Y berdiri farm block", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().BreakPosY=n end end})
     MainTab:CreateButton({Name="Set Break Pos (Current)", Callback=function()
-        local mh=GetMyHitbox(); if mh then
-            local bx=math.floor(mh.Position.X/getgenv().GridSize+0.5)
-            local by=math.floor(mh.Position.Y/getgenv().GridSize+0.5)
+        local mh = GetMyHitbox()
+        if mh then
+            local bx = math.floor(mh.Position.X/getgenv().GridSize+0.5)
+            local by = math.floor(mh.Position.Y/getgenv().GridSize+0.5)
             getgenv().BreakPosX=bx; getgenv().BreakPosY=by
-            BPX:Set(tostring(bx)); BPY:Set(tostring(by))
+            pcall(function() BPX:Set(tostring(bx)); BPY:Set(tostring(by)) end)
             Rayfield:Notify({Title="Break Pos", Content="X:"..bx.." Y:"..by, Duration=3})
         end
     end})
@@ -801,41 +759,43 @@ local ok, err = pcall(function()
     local DPY = MainTab:CreateInput({Name="Drop Pos Y", PlaceholderText="Y posisi drop", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().DropPosY=n end end})
     MainTab:CreateButton({Name="Set Drop Pos (Current)", Callback=function()
-        local mh=GetMyHitbox(); if mh then
-            local dx=math.floor(mh.Position.X/getgenv().GridSize+0.5)
-            local dy=math.floor(mh.Position.Y/getgenv().GridSize+0.5)
+        local mh = GetMyHitbox()
+        if mh then
+            local dx = math.floor(mh.Position.X/getgenv().GridSize+0.5)
+            local dy = math.floor(mh.Position.Y/getgenv().GridSize+0.5)
             getgenv().DropPosX=dx; getgenv().DropPosY=dy
-            DPX:Set(tostring(dx)); DPY:Set(tostring(dy))
+            pcall(function() DPX:Set(tostring(dx)); DPY:Set(tostring(dy)) end)
             Rayfield:Notify({Title="Drop Pos", Content="X:"..dx.." Y:"..dy, Duration=3})
         end
     end})
 
-    MainTab:CreateSection("Webhook")
+    MainTab:CreateSection("Webhook & Stats")
     MainTab:CreateButton({Name="Test Webhook", Callback=function()
         local url = getgenv().WebhookURL
         if not url or url=="" then
-            Rayfield:Notify({Title="Webhook", Content="URL belum di-set di loader!", Duration=3}); return
+            Rayfield:Notify({Title="Webhook", Content="Set WebhookURL di loader dulu!", Duration=3}); return
         end
         task.spawn(function()
-            SendWebhook("**[TEST]** Webhook dari `"..LP.Name.."` berhasil terhubung!")
+            SendWebhook("**[TEST]** `"..LP.Name.."` webhook OK!")
         end)
         Rayfield:Notify({Title="Webhook", Content="Test dikirim!", Duration=3})
     end})
-
-    MainTab:CreateSection("Stats")
-    MainTab:CreateButton({Name="Lihat Stats (F9)", Callback=function()
-        print("[Stats] Cycle:", getgenv().CycleCount, "| Total Drop:", getgenv().TotalDropAllTime)
+    MainTab:CreateButton({Name="Lihat Stats", Callback=function()
         Rayfield:Notify({
-            Title   = "Stats",
-            Content = "Cycle: "..getgenv().CycleCount.."\nTotal Drop: "..getgenv().TotalDropAllTime,
-            Duration = 5,
+            Title="Stats",
+            Content="Cycle: "..getgenv().CycleCount.."\nTotal Drop: "..getgenv().TotalDropAllTime,
+            Duration=5,
         })
     end})
     MainTab:CreateButton({Name="Reset Stats", Callback=function()
         getgenv().TotalDropAllTime=0; getgenv().CycleCount=0
-        Rayfield:Notify({Title="Stats", Content="Stats di-reset", Duration=3})
+        Rayfield:Notify({Title="Stats", Content="Reset!", Duration=2})
     end})
+
 end)
 
-if not ok then warn("Error UI pabrik:", err) end
+if not uiOk then
+    warn("[Pabrik] UI Error: "..tostring(uiErr))
+end
 
+print("[Pabrik v3] Load selesai! Heartbeat:", getgenv().RaihjnHeartbeatPabrik ~= nil)
