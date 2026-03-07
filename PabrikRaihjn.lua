@@ -752,7 +752,7 @@ local uiOk, uiErr = pcall(function()
 
     MainTab:CreateInput({Name="Keep Seed Amount", PlaceholderText="20", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().KeepSeedAmt=n end end})
-    MainTab:CreateInput({Name="Block Threshold", PlaceholderText="20", RemoveTextAfterFocusLost=false,
+    MainTab:CreateInput({Name="Block Threshold", PlaceholderText="1", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().BlockThreshold=n end end})
 
     MainTab:CreateToggle({
@@ -819,3 +819,4 @@ if not uiOk then
 end
 
 print("[Pabrik v3] Load selesai! Heartbeat:", getgenv().RaihjnHeartbeatPabrik ~= nil)
+
