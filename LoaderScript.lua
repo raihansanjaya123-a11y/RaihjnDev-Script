@@ -5,6 +5,7 @@ getgenv().Rayfield = Rayfield
 -- WEBHOOK URL (diisi di sini atau via UI tab Webhook)
 -- ============================================================
 getgenv().WebhookURL = getgenv().WebhookURL or ""
+getgenv().ScriptStartTime = os.time()
 
 -- ============================================================
 -- LOAD SCRIPT HELPER
@@ -74,6 +75,12 @@ local function ForceRestoreUI()
             end
         end
     end)
+end
+local function FormatTime(seconds)
+    local h = math.floor(seconds / 3600)
+    local m = math.floor((seconds % 3600) / 60)
+    local s = seconds % 60
+    return string.format("%02d:%02d:%02d", h, m, s)
 end
 
 -- ============================================================
@@ -235,13 +242,7 @@ WebhookTab:CreateButton({
             return
         end
         task.spawn(function()
-            getgenv().SendWebhook({
-                    title  = "✅ Test webhook dari RaihjnDev berhasil!",
-                    color  = 0x00FF00,
-                    fields = {
-                        {name = "🚹Players", value = LP.Name},
-                    },
-                })
+            getgenv().SendWebhook("✅ Test webhook dari RaihjnDev berhasil!")
         end)
         Rayfield:Notify({Title="Webhook", Content="Test dikirim ke Discord!", Duration=3})
     end,
@@ -348,6 +349,11 @@ end
 -- ============================================================
 local SettingsTab = Window:CreateTab("Settings", nil)
 getgenv().RaihjnSettingsTab = SettingsTab
+
+local timeParagraph = SettingsTab:CreateParagraph({
+    Title = "Waktu Berjalan",
+    Content = "00:00:00"
+})
 
 SettingsTab:CreateButton({
     Name     = "Reset UI",
