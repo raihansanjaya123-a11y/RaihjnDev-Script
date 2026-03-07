@@ -2,86 +2,43 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 getgenv().Rayfield = Rayfield
 
 -- ============================================================
--- WEBHOOK LOGIC (sederhana, tanpa embed)
+-- WEBHOOK URL (diisi di sini atau via UI tab Webhook)
 -- ============================================================
-local HttpService
-pcall(function() HttpService = game:GetService("HttpService") end)
-
 getgenv().WebhookURL = getgenv().WebhookURL or ""
 
-local webhookQueue = {}
-local webhookRunning = false
-
-local function ProcessWebhookQueue()
-    if webhookRunning then return end
-    webhookRunning = true
-    task.spawn(function()
-        while #webhookQueue > 0 do
-            local payload = table.remove(webhookQueue, 1)
-            local url = getgenv().WebhookURL
-            if url and url ~= "" and HttpService then
-                pcall(function()
-                    local body = HttpService:JSONEncode(payload)
-                    local requestFunc = syn and syn.request or http and http.request or request
-                    if requestFunc then
-                        requestFunc({
-                            Url = url,
-                            Method = "POST",
-                            Headers = {["Content-Type"] = "application/json"},
-                            Body = body,
-                        })
-                    end
-                end)
-            end
-            task.wait(1.5) -- jeda antar pengiriman
-        end
-        webhookRunning = false
-    end)
-end
-
-getgenv().SendWebhook = function(message)
-    if not HttpService or not getgenv().WebhookURL or getgenv().WebhookURL == "" then return end
-    local payload = {
-        content = message,
-        username = "RaihjnDev Bot",
-    }
-    table.insert(webhookQueue, payload)
-    ProcessWebhookQueue()
-end
-
+-- ============================================================
+-- LOAD SCRIPT HELPER
+-- ============================================================
 local function LoadScriptFromUrl(url, scriptName)
     local success, result = pcall(function()
         local content = game:HttpGet(url)
         if content:sub(1, 5) == "<html" then
-            error("URL mengembalikan HTML, bukan script. Periksa URL.")
+            error("URL mengembalikan HTML, bukan script.")
         end
         local func = loadstring(content)
         if func then
             func()
-            print("Berhasil memuat script: " .. scriptName)
+            print("✅ Loaded: " .. scriptName)
         else
-            warn("Gagal mengkompilasi script: " .. scriptName)
-            print("Cuplikan konten (200 karakter pertama):")
-            print(content:sub(1, 200))
+            warn("❌ Gagal kompilasi: " .. scriptName)
         end
     end)
     if not success then
-        warn("Error memuat script: " .. scriptName .. " - " .. tostring(result))
+        warn("❌ Error memuat [" .. scriptName .. "]: " .. tostring(result))
     end
 end
 
-local RS = game:GetService("ReplicatedStorage")
-local Players   = game:GetService("Players")
-local LP        = Players.LocalPlayer
-local UIManager 
-local success, err = pcall(function() 
-    UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager")) 
+-- ============================================================
+-- SERVICES
+-- ============================================================
+local RS      = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LP      = Players.LocalPlayer
+
+local UIManager
+pcall(function()
+    UIManager = require(RS:WaitForChild("Managers"):WaitForChild("UIManager"))
 end)
-if success then
-    print("UIManager loaded successfully")
-else
-    warn("Error loading UIManager: " .. tostring(err))
-end
 
 local function ForceRestoreUI()
     pcall(function()
@@ -94,11 +51,11 @@ local function ForceRestoreUI()
     pcall(function()
         if UIManager then
             if type(UIManager.ShowHUD) == "function" then UIManager:ShowHUD() end
-            if type(UIManager.ShowUI) == "function" then UIManager:ShowUI() end
+            if type(UIManager.ShowUI)  == "function" then UIManager:ShowUI() end
         end
     end)
     pcall(function()
-        local targetUIs = { "topbar", "gems", "playerui", "hotbar", "crosshair", "mainhud", "stats", "inventory", "backpack", "menu", "bottombar", "buttons" }
+        local targetUIs = {"topbar","gems","playerui","hotbar","crosshair","mainhud","stats","inventory","backpack","menu","bottombar","buttons"}
         for _, gui in pairs(LP.PlayerGui:GetDescendants()) do
             if gui:IsA("Frame") or gui:IsA("ScreenGui") or gui:IsA("ImageLabel") then
                 local gName = string.lower(gui.Name)
@@ -119,36 +76,99 @@ local function ForceRestoreUI()
     end)
 end
 
+-- ============================================================
+-- WEBHOOK SENDER (SEDERHANA, HANYA STRING)
+-- ============================================================
+local HttpService
+pcall(function() HttpService = game:GetService("HttpService") end)
+
+local function GetPlayerName()
+    local ok, name = pcall(function()
+        return game:GetService("Players").LocalPlayer.Name
+    end)
+    return ok and name or "Unknown"
+end
+
+local webhookQueue   = {}
+local webhookRunning = false
+getgenv()._webhookQueue   = webhookQueue
+getgenv()._webhookRunning = false
+
+local function ProcessQueue()
+    if getgenv()._webhookRunning then return end
+    getgenv()._webhookRunning = true
+    task.spawn(function()
+        while #webhookQueue > 0 do
+            local payload = table.remove(webhookQueue, 1)
+            local url = getgenv().WebhookURL
+            if url and url ~= "" and HttpService then
+                pcall(function()
+                    local body = HttpService:JSONEncode(payload)
+                    local requestFunc = syn and syn.request or http and http.request or request
+                    if requestFunc then
+                        requestFunc({
+                            Url     = url,
+                            Method  = "POST",
+                            Headers = {["Content-Type"] = "application/json"},
+                            Body    = body,
+                        })
+                    end
+                end)
+            end
+            task.wait(1.5)
+        end
+        getgenv()._webhookRunning = false
+    end)
+end
+
+-- Fungsi SendWebhook sekarang hanya menerima string
+getgenv().SendWebhook = function(message)
+    if not HttpService then return end
+    if not getgenv().WebhookURL or getgenv().WebhookURL == "" then return end
+    if type(message) ~= "string" then
+        message = tostring(message)
+    end
+    local payload = {
+        content  = message,
+        username = "RaihjnDev Bot",
+    }
+    table.insert(webhookQueue, payload)
+    ProcessQueue()
+end
+
+-- ============================================================
+-- WINDOW
+-- ============================================================
 local Window = Rayfield:CreateWindow({
-   Name = "Craft A World",
-   Icon = 0,
-   LoadingTitle = "RaihjnDev",
-   LoadingSubtitle = "by RaihjnDev | Rayfield UI",
-   ShowText = "RaihjnDev",
-   Theme = "Ocean",
-   ToggleUIKeybind = "K",
-   DisableRayfieldPrompts = true,
-   DisableBuildWarnings = false,
-   ConfigurationSaving = {
-      Enabled = false,
-      FolderName = nil,
-      FileName = "RaihjnDev Index"
-   },
-   Discord = {
-      Enabled = true,
-      Invite = "Me7FKdQdSp",
-      RememberJoins = true
-   },
-   KeySystem = false,
-   KeySettings = {
-      Title = "RaihjnDev",
-      Subtitle = "by RaihjnDev",
-      Note = "Join Discord to get key",
-      FileName = "RaihjnDev | Key",
-      SaveKey = false,
-      GrabKeyFromSite = true,
-      Key = {"https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/refs/heads/main/Key"}
-   }
+    Name             = "Craft A World",
+    Icon             = 0,
+    LoadingTitle     = "RaihjnDev",
+    LoadingSubtitle  = "by RaihjnDev | Rayfield UI",
+    ShowText         = "RaihjnDev",
+    Theme            = "Ocean",
+    ToggleUIKeybind  = "K",
+    DisableRayfieldPrompts  = true,
+    DisableBuildWarnings    = false,
+    ConfigurationSaving = {
+        Enabled    = false,
+        FolderName = nil,
+        FileName   = "RaihjnDev Index"
+    },
+    Discord = {
+        Enabled      = true,
+        Invite       = "Me7FKdQdSp",
+        RememberJoins = true
+    },
+    KeySystem = false,
+    KeySettings = {
+        Title    = "RaihjnDev",
+        Subtitle = "by RaihjnDev",
+        Note     = "Join Discord to get key",
+        FileName = "RaihjnDev | Key",
+        SaveKey  = false,
+        GrabKeyFromSite = true,
+        Key = {"https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/refs/heads/main/Key"}
+    }
 })
 
 -- ============================================================
@@ -157,12 +177,10 @@ local Window = Rayfield:CreateWindow({
 local MainTab = Window:CreateTab("Pabrik", nil)
 getgenv().RaihjnTab = MainTab
 
-local scriptPabrik = {
-    {Name = "PabrikRaihjn", url = 'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/PabrikRaihjn.lua'}
-}
-for i,v in pairs(scriptPabrik) do
-    LoadScriptFromUrl(v.url, v.Name)
-end
+LoadScriptFromUrl(
+    'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/PabrikRaihjn.lua',
+    'PabrikRaihjn'
+)
 
 -- ============================================================
 -- TAB: AUTO FARM
@@ -170,12 +188,10 @@ end
 local AutoFarmTab = Window:CreateTab("AutoFarm", nil)
 getgenv().RaihjnAutoFarmTab = AutoFarmTab
 
-local scriptAutoFarm = {
-    {Name = "AutoFarm", url = 'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/AutoFarm.lua'}
-}
-for i,v in pairs(scriptAutoFarm) do
-    LoadScriptFromUrl(v.url, v.Name)
-end
+LoadScriptFromUrl(
+    'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/AutoFarm.lua',
+    'AutoFarm'
+)
 
 -- ============================================================
 -- TAB: MISC
@@ -183,12 +199,10 @@ end
 local MiscTab = Window:CreateTab("Misc", nil)
 getgenv().RaihjnMiscTab = MiscTab
 
-local scriptMisc = {
-    {Name = "AutoBan", url = 'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/Autoban.lua'}
-}
-for i,v in pairs(scriptMisc) do
-    LoadScriptFromUrl(v.url, v.Name)
-end
+LoadScriptFromUrl(
+    'https://raw.githubusercontent.com/raihansanjaya123-a11y/RaihjnDev-Script/main/Autoban.lua',
+    'AutoBan'
+)
 
 -- ============================================================
 -- TAB: WEBHOOK
@@ -196,32 +210,132 @@ end
 local WebhookTab = Window:CreateTab("Webhook", nil)
 getgenv().RaihjnWebhookTab = WebhookTab
 
-WebhookTab:CreateSection("Discord Webhook Settings")
+WebhookTab:CreateSection("Discord Webhook")
 
 WebhookTab:CreateInput({
-    Name = "Webhook URL",
-    PlaceholderText = "https://discord.com/api/webhooks/...",
+    Name                     = "Webhook URL",
+    PlaceholderText          = "https://discord.com/api/webhooks/...",
     RemoveTextAfterFocusLost = false,
     Callback = function(t)
-        t = t:gsub("%s+", "") -- hapus spasi
+        t = t:gsub("%s+", "")  -- hapus spasi
         if t ~= "" then
             getgenv().WebhookURL = t
             Rayfield:Notify({Title="Webhook", Content="URL tersimpan!", Duration=3})
+            print("[Webhook] URL set:", t:sub(1, 40).."...")
         end
     end,
 })
 
 WebhookTab:CreateButton({
-    Name = "Test Webhook",
+    Name     = "🔔 Test Webhook",
     Callback = function()
-        if not getgenv().WebhookURL or getgenv().WebhookURL == "" then
+        local url = getgenv().WebhookURL
+        if not url or url == "" then
             Rayfield:Notify({Title="Webhook", Content="Isi URL dulu!", Duration=3})
             return
         end
-        getgenv().SendWebhook("Test webhook dari RaihjnDev loader!")
-        Rayfield:Notify({Title="Webhook", Content="Pesan test dikirim!", Duration=3})
+        task.spawn(function()
+            getgenv().SendWebhook("✅ Test webhook dari RaihjnDev loader berhasil!")
+        end)
+        Rayfield:Notify({Title="Webhook", Content="Test dikirim ke Discord!", Duration=3})
     end,
 })
+
+WebhookTab:CreateSection("Stats Pabrik")
+
+WebhookTab:CreateButton({
+    Name     = "📊 Lihat Stats Pabrik",
+    Callback = function()
+        local cycle = getgenv().CycleCount or 0
+        local total = getgenv().TotalDropAllTime or 0
+        local seed  = getgenv().SelectedSeed or "?"
+        local msg   = "Cycle: "..cycle.."\nTotal Drop: "..total.."\nSeed: "..seed
+        Rayfield:Notify({Title="Stats Pabrik", Content=msg, Duration=6})
+        print("[Stats]", msg)
+    end,
+})
+
+WebhookTab:CreateButton({
+    Name     = "📤 Kirim Stats ke Discord",
+    Callback = function()
+        local url = getgenv().WebhookURL
+        if not url or url == "" then
+            Rayfield:Notify({Title="Webhook", Content="Isi URL dulu!", Duration=3}); return
+        end
+        local cycle   = getgenv().CycleCount or 0
+        local total   = getgenv().TotalDropAllTime or 0
+        local seed    = getgenv().SelectedSeed or "?"
+        local afCycle = getgenv().AFB_CycleCount or 0
+        local afBroken = getgenv().AFB_TotalBroken or 0
+        local message = string.format(
+            "📊 **Stats Manual Report**\n👤 Player: %s\n🎮 Game: %s\n\n🏭 Pabrik — Cycle: %d\n📦 Pabrik — Total Drop: %d\n🌿 Pabrik — Seed: %s\n\n⛏️ AutoFarm — Cycle: %d\n🧱 AutoFarm — Broken: %d",
+            LP.Name, game.Name, cycle, total, seed, afCycle, afBroken
+        )
+        task.spawn(function()
+            getgenv().SendWebhook(message)
+        end)
+        Rayfield:Notify({Title="Webhook", Content="Stats dikirim!", Duration=3})
+    end,
+})
+
+WebhookTab:CreateButton({
+    Name     = "🔁 Reset Stats Pabrik",
+    Callback = function()
+        getgenv().TotalDropAllTime = 0
+        getgenv().CycleCount       = 0
+        Rayfield:Notify({Title="Stats", Content="Reset!", Duration=2})
+    end,
+})
+
+-- ============================================================
+-- CLEANUP SEMUA SCRIPT (dipanggil saat Exit)
+-- ============================================================
+local function CleanupAll()
+    getgenv().EnablePabrik    = false
+    getgenv().PabrikIsRunning = false
+
+    if getgenv().PabrikCoroutine then
+        pcall(function() coroutine.close(getgenv().PabrikCoroutine) end)
+        getgenv().PabrikCoroutine = nil
+    end
+
+    if getgenv().RaihjnHeartbeatPabrik then
+        pcall(function() getgenv().RaihjnHeartbeatPabrik:Disconnect() end)
+        getgenv().RaihjnHeartbeatPabrik = nil
+    end
+
+    getgenv().AFB_Enabled = false
+
+    if getgenv().AFBlockHeartbeat then
+        pcall(function() getgenv().AFBlockHeartbeat:Disconnect() end)
+        getgenv().AFBlockHeartbeat = nil
+    end
+    if getgenv().AFBlockLoop then
+        pcall(function() task.cancel(getgenv().AFBlockLoop) end)
+        getgenv().AFBlockLoop = nil
+    end
+
+    getgenv().IsGhosting     = false
+    getgenv().HoldCFrame     = nil
+    getgenv().AFB_IsGhosting = false
+    getgenv().AFB_HoldCFrame = nil
+
+    pcall(function()
+        local char = LP.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.Anchored = false end
+        end
+    end)
+
+    if getgenv().AFGridGui then
+        pcall(function() getgenv().AFGridGui:Destroy() end)
+        getgenv().AFGridGui = nil
+    end
+
+    getgenv().SendWebhook = nil
+    print("[Exit] Semua script dihentikan.")
+end
 
 -- ============================================================
 -- TAB: SETTINGS
@@ -230,20 +344,17 @@ local SettingsTab = Window:CreateTab("Settings", nil)
 getgenv().RaihjnSettingsTab = SettingsTab
 
 SettingsTab:CreateButton({
-    Name = "Reset UI",
+    Name     = "Reset UI",
     Callback = function()
         ForceRestoreUI()
-        Rayfield:Notify({
-            Title = "Reset UI",
-            Content = "UI reset successfully",
-            Duration = 3,
-        })
+        Rayfield:Notify({Title="Reset UI", Content="UI reset successfully", Duration=3})
     end,
 })
 
 SettingsTab:CreateButton({
-    Name = "Exit",
+    Name     = "🛑 Exit & Stop Semua Script",
     Callback = function()
-        Rayfield:Destroy()
+        CleanupAll()
+        pcall(function() Rayfield:Destroy() end)
     end,
 })
