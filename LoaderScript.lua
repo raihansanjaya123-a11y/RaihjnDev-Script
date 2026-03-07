@@ -228,11 +228,16 @@ WebhookTab:CreateButton({
             Rayfield:Notify({Title="Webhook", Content="Isi URL dulu!", Duration=3}); return
         end
         task.spawn(function()
+            local elapsed = os.time() - (getgenv().PabrikStartTime or os.time())
+            local h = math.floor(elapsed / 3600)
+            local m = math.floor((elapsed % 3600) / 60)
+            local s = elapsed % 60
+            local timeStr = string.format("%02d:%02d:%02d", h, m, s)
             getgenv().SendWebhook(string.format(
-                "📊 **Stats Manual Report**\n👤 Player: %s\n🎮 Game: %s\n\n🏭 Pabrik — Cycle: %d\n📦 Pabrik — Total Drop: %d\n🌿 Pabrik — Seed: %s\n\n⛏️ AutoFarm — Cycle: %d\n🧱 AutoFarm — Broken: %d\n\n🔨 Total Banned: %d",
+                "📊 **Stats Manual Report**\n👤 Player: %s\n🎮 Game: %s\n\n🕐 Waktu Pabrik ON: %s\n🏭 Pabrik — Cycle: %d\n📦 Pabrik — Total Drop: %d\n🌿 Pabrik — Seed: %s\n\n🔨 Total Banned: %d",
                 LP.Name, game.Name,
+                timeStr,
                 getgenv().CycleCount or 0, getgenv().TotalDropAllTime or 0, getgenv().SelectedSeed or "?",
-                getgenv().AFB_CycleCount or 0, getgenv().AFB_TotalBroken or 0,
                 getgenv().TotalBanned or 0
             ))
         end)
