@@ -2,10 +2,14 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 getgenv().Rayfield = Rayfield
 
 -- ============================================================
--- WEBHOOK URL (diisi di sini atau via UI tab Webhook)
+-- SCRIPT START TIME (untuk timer)
+-- ============================================================
+getgenv().ScriptStartTime = os.time()
+
+-- ============================================================
+-- WEBHOOK URL
 -- ============================================================
 getgenv().WebhookURL = getgenv().WebhookURL or ""
-getgenv().ScriptStartTime = os.time()
 
 -- ============================================================
 -- LOAD SCRIPT HELPER
@@ -76,12 +80,6 @@ local function ForceRestoreUI()
         end
     end)
 end
-local function FormatTime(seconds)
-    local h = math.floor(seconds / 3600)
-    local m = math.floor((seconds % 3600) / 60)
-    local s = seconds % 60
-    return string.format("%02d:%02d:%02d", h, m, s)
-end
 
 -- ============================================================
 -- WEBHOOK SENDER (SEDERHANA, HANYA STRING)
@@ -141,6 +139,16 @@ getgenv().SendWebhook = function(message)
     }
     table.insert(webhookQueue, payload)
     ProcessQueue()
+end
+
+-- ============================================================
+-- FUNGSI FORMAT WAKTU
+-- ============================================================
+local function FormatTime(seconds)
+    local h = math.floor(seconds / 3600)
+    local m = math.floor((seconds % 3600) / 60)
+    local s = seconds % 60
+    return string.format("%02d:%02d:%02d", h, m, s)
 end
 
 -- ============================================================
@@ -242,7 +250,7 @@ WebhookTab:CreateButton({
             return
         end
         task.spawn(function()
-            getgenv().SendWebhook("✅ Test webhook dari RaihjnDev berhasil!")
+            getgenv().SendWebhook("✅ Test webhook dari RaihjnDev loader berhasil!")
         end)
         Rayfield:Notify({Title="Webhook", Content="Test dikirim ke Discord!", Duration=3})
     end,
@@ -295,6 +303,43 @@ WebhookTab:CreateButton({
 })
 
 -- ============================================================
+-- TAB: SETTINGS (dengan timer)
+-- ============================================================
+local SettingsTab = Window:CreateTab("Settings", nil)
+getgenv().RaihjnSettingsTab = SettingsTab
+
+SettingsTab:CreateButton({
+    Name     = "Reset UI",
+    Callback = function()
+        ForceRestoreUI()
+        Rayfield:Notify({Title="Reset UI", Content="UI reset successfully", Duration=3})
+    end,
+})
+
+-- Paragraph untuk menampilkan waktu berjalan
+local timeParagraph = SettingsTab:CreateParagraph({
+    Title = "Waktu Berjalan",
+    Content = "00:00:00"
+})
+
+-- Loop update setiap detik
+task.spawn(function()
+    while true do
+        task.wait(1)
+        local elapsed = os.time() - getgenv().ScriptStartTime
+        timeParagraph:Set(FormatTime(elapsed))
+    end
+end)
+
+SettingsTab:CreateButton({
+    Name     = "🛑 Exit & Stop Semua Script",
+    Callback = function()
+        CleanupAll()
+        pcall(function() Rayfield:Destroy() end)
+    end,
+})
+
+-- ============================================================
 -- CLEANUP SEMUA SCRIPT (dipanggil saat Exit)
 -- ============================================================
 local function CleanupAll()
@@ -343,30 +388,3 @@ local function CleanupAll()
     getgenv().SendWebhook = nil
     print("[Exit] Semua script dihentikan.")
 end
-
--- ============================================================
--- TAB: SETTINGS
--- ============================================================
-local SettingsTab = Window:CreateTab("Settings", nil)
-getgenv().RaihjnSettingsTab = SettingsTab
-
-local timeParagraph = SettingsTab:CreateParagraph({
-    Title = "Waktu Berjalan",
-    Content = "00:00:00"
-})
-
-SettingsTab:CreateButton({
-    Name     = "Reset UI",
-    Callback = function()
-        ForceRestoreUI()
-        Rayfield:Notify({Title="Reset UI", Content="UI reset successfully", Duration=3})
-    end,
-})
-
-SettingsTab:CreateButton({
-    Name     = "🛑 Exit & Stop Semua Script",
-    Callback = function()
-        CleanupAll()
-        pcall(function() Rayfield:Destroy() end)
-    end,
-})
