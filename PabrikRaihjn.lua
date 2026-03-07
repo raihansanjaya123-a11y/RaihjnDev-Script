@@ -25,8 +25,8 @@ end)
 getgenv().GridSize       = getgenv().GridSize       or 4.5
 getgenv().HitCount       = getgenv().HitCount       or 3
 getgenv().EnablePabrik   = getgenv().EnablePabrik   or false
-getgenv().PabrikStartX   = getgenv().PabrikStartX   or 0
-getgenv().PabrikEndX     = getgenv().PabrikEndX     or 10
+getgenv().PabrikStartX   = getgenv().PabrikStartX   or 1
+getgenv().PabrikEndX     = getgenv().PabrikEndX     or 99
 getgenv().PabrikStartY   = getgenv().PabrikStartY   or 37
 getgenv().PabrikEndY     = getgenv().PabrikEndY     or 37
 getgenv().GrowthTime     = getgenv().GrowthTime     or 30
@@ -34,7 +34,7 @@ getgenv().BreakPosX      = getgenv().BreakPosX      or 0
 getgenv().BreakPosY      = getgenv().BreakPosY      or 0
 getgenv().DropPosX       = getgenv().DropPosX       or 0
 getgenv().DropPosY       = getgenv().DropPosY       or 0
-getgenv().BlockThreshold = getgenv().BlockThreshold or 20
+getgenv().BlockThreshold = getgenv().BlockThreshold or 1
 getgenv().KeepSeedAmt    = getgenv().KeepSeedAmt    or 20
 getgenv().SelectedSeed   = getgenv().SelectedSeed   or ""
 getgenv().SelectedBlock  = getgenv().SelectedBlock  or ""
@@ -702,16 +702,12 @@ local uiOk, uiErr = pcall(function()
     MainTab:CreateSection("Delay Settings")
     MainTab:CreateInput({Name="Plant Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().PlaceDelay=n end end})
-    MainTab:CreateInput({Name="Plant Hit Count", PlaceholderText="2", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().PlantHitCount=n end end})
     MainTab:CreateInput({Name="Hit Count", PlaceholderText="3", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().HitCount=n end end})
     MainTab:CreateInput({Name="Break Delay", PlaceholderText="0.15", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().BreakDelay=n end end})
     MainTab:CreateInput({Name="Step Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().StepDelay=n end end})
-    MainTab:CreateInput({Name="Y Gap", PlaceholderText="2", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n and n>=1 then getgenv().YGap=n end end})
     MainTab:CreateInput({Name="Growth Time", PlaceholderText="Waktu tumbuh (detik)", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().GrowthTime=n end end})
 
@@ -734,6 +730,26 @@ local uiOk, uiErr = pcall(function()
             Rayfield:Notify({Title="Seed", Content=id, Duration=2})
         end,
     })
+    MainTab:CreateButton({
+    Name = "Refresh Item List",
+    Callback = function()
+        local items = ScanAvailableItems()
+        -- Gunakan Rayfield.Flags, bukan MainTab.Flags
+        local blockDropdown = Rayfield.Flags["PabrikBlockDrop"]
+        local seedDropdown = Rayfield.Flags["PabrikSeedDrop"]
+        if blockDropdown and seedDropdown then
+            pcall(function()
+                -- Metode UpdateOptions atau SetOptions (tergantung versi Rayfield)
+                blockDropdown:UpdateOptions(items)
+                seedDropdown:UpdateOptions(items)
+            end)
+        else
+            warn("Dropdown tidak ditemukan!")
+        end
+        Rayfield:Notify({Title="Refresh", Content="Item list diperbarui!", Duration=2})
+    end
+})
+
     MainTab:CreateInput({Name="Keep Seed Amount", PlaceholderText="20", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().KeepSeedAmt=n end end})
     MainTab:CreateInput({Name="Block Threshold", PlaceholderText="20", RemoveTextAfterFocusLost=false,
