@@ -2,14 +2,10 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 getgenv().Rayfield = Rayfield
 
 -- ============================================================
--- SCRIPT START TIME (untuk timer)
--- ============================================================
-getgenv().ScriptStartTime = os.time()
-
--- ============================================================
--- WEBHOOK URL
+-- WEBHOOK URL (diisi di sini atau via UI tab Webhook)
 -- ============================================================
 getgenv().WebhookURL = getgenv().WebhookURL or ""
+getgenv().ScriptStartTime = os.time()
 
 -- ============================================================
 -- LOAD SCRIPT HELPER
@@ -80,6 +76,12 @@ local function ForceRestoreUI()
         end
     end)
 end
+local function FormatTime(seconds)
+    local h = math.floor(seconds / 3600)
+    local m = math.floor((seconds % 3600) / 60)
+    local s = seconds % 60
+    return string.format("%02d:%02d:%02d", h, m, s)
+end
 
 -- ============================================================
 -- WEBHOOK SENDER (SEDERHANA, HANYA STRING)
@@ -141,14 +143,52 @@ getgenv().SendWebhook = function(message)
     ProcessQueue()
 end
 
--- ============================================================
--- FUNGSI FORMAT WAKTU
--- ============================================================
-local function FormatTime(seconds)
-    local h = math.floor(seconds / 3600)
-    local m = math.floor((seconds % 3600) / 60)
-    local s = seconds % 60
-    return string.format("%02d:%02d:%02d", h, m, s)
+-- Fungsi untuk membersihkan semua script dan reset state (dipanggil saat Exit)
+local function CleanupAll()
+    getgenv().EnablePabrik    = false
+    getgenv().PabrikIsRunning = false
+
+    if getgenv().PabrikCoroutine then
+        pcall(function() coroutine.close(getgenv().PabrikCoroutine) end)
+        getgenv().PabrikCoroutine = nil
+    end
+
+    if getgenv().RaihjnHeartbeatPabrik then
+        pcall(function() getgenv().RaihjnHeartbeatPabrik:Disconnect() end)
+        getgenv().RaihjnHeartbeatPabrik = nil
+    end
+
+    getgenv().AFB_Enabled = false
+
+    if getgenv().AFBlockHeartbeat then
+        pcall(function() getgenv().AFBlockHeartbeat:Disconnect() end)
+        getgenv().AFBlockHeartbeat = nil
+    end
+    if getgenv().AFBlockLoop then
+        pcall(function() task.cancel(getgenv().AFBlockLoop) end)
+        getgenv().AFBlockLoop = nil
+    end
+
+    getgenv().IsGhosting     = false
+    getgenv().HoldCFrame     = nil
+    getgenv().AFB_IsGhosting = false
+    getgenv().AFB_HoldCFrame = nil
+
+    pcall(function()
+        local char = LP.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.Anchored = false end
+        end
+    end)
+
+    if getgenv().AFGridGui then
+        pcall(function() getgenv().AFGridGui:Destroy() end)
+        getgenv().AFGridGui = nil
+    end
+
+    getgenv().SendWebhook = nil
+    print("[Exit] Semua script dihentikan.")
 end
 
 -- ============================================================
@@ -250,7 +290,7 @@ WebhookTab:CreateButton({
             return
         end
         task.spawn(function()
-            getgenv().SendWebhook("✅ Test webhook dari RaihjnDev loader berhasil!")
+            getgenv().SendWebhook("✅ Test webhook dari RaihjnDev berhasil!")
         end)
         Rayfield:Notify({Title="Webhook", Content="Test dikirim ke Discord!", Duration=3})
     end,
@@ -303,43 +343,6 @@ WebhookTab:CreateButton({
 })
 
 -- ============================================================
--- TAB: SETTINGS (dengan timer)
--- ============================================================
-local SettingsTab = Window:CreateTab("Settings", nil)
-getgenv().RaihjnSettingsTab = SettingsTab
-
-SettingsTab:CreateButton({
-    Name     = "Reset UI",
-    Callback = function()
-        ForceRestoreUI()
-        Rayfield:Notify({Title="Reset UI", Content="UI reset successfully", Duration=3})
-    end,
-})
-
--- Paragraph untuk menampilkan waktu berjalan
-local timeParagraph = SettingsTab:CreateParagraph({
-    Title = "Waktu Berjalan",
-    Content = "00:00:00"
-})
-
--- Loop update setiap detik
-task.spawn(function()
-    while true do
-        task.wait(1)
-        local elapsed = os.time() - getgenv().ScriptStartTime
-        timeParagraph:Set(FormatTime(elapsed))
-    end
-end)
-
-SettingsTab:CreateButton({
-    Name     = "🛑 Exit & Stop Semua Script",
-    Callback = function()
-        CleanupAll()
-        pcall(function() Rayfield:Destroy() end)
-    end,
-})
-
--- ============================================================
 -- CLEANUP SEMUA SCRIPT (dipanggil saat Exit)
 -- ============================================================
 local function CleanupAll()
@@ -388,3 +391,34 @@ local function CleanupAll()
     getgenv().SendWebhook = nil
     print("[Exit] Semua script dihentikan.")
 end
+
+-- ============================================================
+-- TAB: SETTINGS
+-- ============================================================
+local SettingsTab = Window:CreateTab("Settings", nil)
+getgenv().RaihjnSettingsTab = SettingsTab
+
+local timeParagraph = SettingsTab:CreateParagraph({
+    Title = "Running Script",
+    Content = "00:00:00"
+    callback = function()
+        local elapsed = os.time() - getgenv().ScriptStartTime
+        timeParagraph:SetContent(FormatTime(elapsed))
+    end,
+})
+
+SettingsTab:CreateButton({
+    Name     = "Reset UI",
+    Callback = function()
+        ForceRestoreUI()
+        Rayfield:Notify({Title="Reset UI", Content="UI reset successfully", Duration=3})
+    end,
+})
+
+SettingsTab:CreateButton({
+    Name     = "🛑 Exit & Stop Semua Script",
+    Callback = function()
+        CleanupAll()
+        pcall(function() Rayfield:Destroy() end)
+    end,
+})
