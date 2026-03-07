@@ -1,7 +1,7 @@
 ```lua
 local Rayfield
 local success, result = pcall(function()
-    local rayContent = game:HttpGet('https://sirius.menu/rayfield')
+    local rayContent = game:HttpGet('https://sirius.menu/sirius')
     local rayFunc = loadstring(rayContent)
     if rayFunc then
         Rayfield = rayFunc()
