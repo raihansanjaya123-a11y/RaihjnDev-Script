@@ -732,12 +732,8 @@ local ok, err = pcall(function()
     MainTab:CreateSection("Delay Settings")
     MainTab:CreateInput({Name="Plant Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().PlaceDelay=n end end})
-    MainTab:CreateInput({Name="Plant Hit Count", PlaceholderText="2", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n then getgenv().PlantHitCount=n end end})
     MainTab:CreateInput({Name="Hit Count", PlaceholderText="3", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().HitCount=n end end})
-    MainTab:CreateInput({Name="Y Gap", PlaceholderText="2 = skip 1 baris", RemoveTextAfterFocusLost=false,
-        Callback=function(t) local n=tonumber(t); if n and n>=1 then getgenv().YGap=n end end})
     MainTab:CreateInput({Name="Break Delay", PlaceholderText="0.15", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().BreakDelay=n end end})
     MainTab:CreateInput({Name="Step Delay", PlaceholderText="0.1", RemoveTextAfterFocusLost=false,
@@ -842,3 +838,4 @@ local ok, err = pcall(function()
 end)
 
 if not ok then warn("Error UI pabrik:", err) end
+
