@@ -55,13 +55,42 @@ local function BanPlayer(player)
         end
     end
     print("[AutoBan] Banning:", player.Name)
-    pcall(function() PlayerInspect:FireServer(player) end)
-    task.wait(0.3)
-    pcall(function()
-        UIPromptEvent:FireServer({ButtonAction="ban", Inputs={}})
-        ForceRestoreUI()
-    end)
+
+    -- Step 1: Buka inspect player
+    local ok1 = pcall(function() PlayerInspect:FireServer(player) end)
+    print("[AutoBan] PlayerInspect fired:", ok1)
     task.wait(0.5)
+
+    -- Step 2: Coba berbagai format ban
+    local banOk = false
+
+    -- Format 1: ButtonAction ban
+    banOk = pcall(function()
+        UIPromptEvent:FireServer({ButtonAction="ban", Inputs={}})
+    end)
+    print("[AutoBan] Format1 ban:", banOk)
+    task.wait(0.3)
+
+    -- Format 2: action ban langsung
+    if not banOk then
+        banOk = pcall(function()
+            UIPromptEvent:FireServer("ban", player)
+        end)
+        print("[AutoBan] Format2 ban:", banOk)
+        task.wait(0.3)
+    end
+
+    -- Format 3: nested Inputs
+    if not banOk then
+        banOk = pcall(function()
+            UIPromptEvent:FireServer({action="ban", target=player})
+        end)
+        print("[AutoBan] Format3 ban:", banOk)
+        task.wait(0.3)
+    end
+
+    ForceRestoreUI()
+    task.wait(0.3)
     getgenv().TotalBanned = getgenv().TotalBanned + 1
     Rayfield:Notify({Title="Auto Ban", Content="Banned: @"..player.Name, Duration=4})
 end
@@ -115,6 +144,38 @@ end
 -- UI: AUTO BAN
 -- ============================================================
 MiscTab:CreateSection("Auto Ban")
+
+-- DEBUG: cek remote dulu
+MiscTab:CreateButton({
+    Name="🔧 Debug — Cek Remotes",
+    Callback=function()
+        print("========= REMOTES =========")
+        -- Cek RS.Remotes
+        local remotes = RS:FindFirstChild("Remotes")
+        if remotes then
+            for _, r in pairs(remotes:GetChildren()) do
+                print("[Remotes]", r.Name, r.ClassName)
+            end
+        end
+        -- Cek RS.Managers
+        local managers = RS:FindFirstChild("Managers")
+        if managers then
+            for _, m in pairs(managers:GetDescendants()) do
+                if m:IsA("RemoteEvent") or m:IsA("RemoteFunction") then
+                    print("[Managers]", m:GetFullName(), m.ClassName)
+                end
+            end
+        end
+        -- Print semua remote di RS
+        for _, obj in pairs(RS:GetDescendants()) do
+            if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                print("[RS]", obj:GetFullName())
+            end
+        end
+        print("===========================")
+        Rayfield:Notify({Title="Debug", Content="Cek console untuk list remotes!", Duration=4})
+    end,
+})
 
 MiscTab:CreateToggle({
     Name="Auto Ban (ban semua yang masuk)", CurrentValue=false, Flag="AutoBanToggle",
