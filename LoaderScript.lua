@@ -120,7 +120,6 @@ local function CleanupAll()
         pcall(function() task.cancel(getgenv().AFBlockLoop) end)
         getgenv().AFBlockLoop = nil
     end
-    -- Stop auto scan (dihandle di Autoban.lua)
     getgenv().IsGhosting=false; getgenv().HoldCFrame=nil
     getgenv().AFB_IsGhosting=false; getgenv().AFB_HoldCFrame=nil
     pcall(function()
