@@ -178,36 +178,72 @@ MiscTab:CreateButton({
 -- ============================================================
 local function ScanWorldDrops()
     local found, seen = {}, {}
-    local scanFolders = {"Drops","Gems","Items","WorldDrops","Pickups","Collectibles"}
-    for _, fname in ipairs(scanFolders) do
-        local folder = workspace:FindFirstChild(fname)
-        if folder then
-            for _, obj in pairs(folder:GetChildren()) do
-                local id = nil
-                for _, attrKey in ipairs({"Id","ID","ItemId","item_id","Type"}) do
-                    local v = obj:GetAttribute(attrKey)
-                    if v and tostring(v) ~= "" then id = tostring(v); break end
+
+    local function ProcessObject(obj, folderName)
+        local id = nil
+        -- Cek attribute dulu
+        for _, attrKey in ipairs({"Id","ID","ItemId","item_id","Type","Name","ItemName"}) do
+            local v = obj:GetAttribute(attrKey)
+            if v and tostring(v) ~= "" then id = tostring(v); break end
+        end
+        -- Cek StringValue di dalam object
+        if not id then
+            for _, c in ipairs(obj:GetChildren()) do
+                if c:IsA("StringValue") and c.Value ~= "" then
+                    id = c.Value; break
                 end
-                if not id then
-                    for _, c in ipairs(obj:GetDescendants()) do
-                        if c:IsA("StringValue") and c.Name:lower():find("id") and c.Value ~= "" then
-                            id = c.Value; break
-                        end
-                    end
-                end
-                if not id then id = obj.Name end
-                if id and id ~= "" and not seen[id] then
-                    seen[id] = true
-                    local count = 0
-                    for _, o2 in pairs(folder:GetChildren()) do
-                        local oid = o2:GetAttribute("Id") or o2:GetAttribute("ID") or o2:GetAttribute("ItemId") or o2.Name
-                        if tostring(oid) == id then count = count + 1 end
-                    end
-                    table.insert(found, {Id=id, Count=count, Folder=fname})
+            end
+        end
+        -- Fallback ke nama object
+        if not id or id == "" then id = obj.Name end
+
+        if id and id ~= "" and id ~= "Baseplate" and id ~= "SpawnLocation" then
+            if not seen[id] then
+                seen[id] = true
+                table.insert(found, {Id=id, Count=1, Folder=folderName})
+            else
+                -- Tambah count kalau sudah ada
+                for _, f in ipairs(found) do
+                    if f.Id == id then f.Count = f.Count + 1; break end
                 end
             end
         end
     end
+
+    -- Scan semua children workspace
+    for _, obj in pairs(workspace:GetChildren()) do
+        -- Skip terrain, kamera, script
+        if obj:IsA("Terrain") or obj:IsA("Camera") or obj:IsA("Script") or obj:IsA("LocalScript") then
+            continue
+        end
+        -- Kalau BasePart langsung (drop ngambang)
+        if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("Part") or obj:IsA("UnionOperation") then
+            ProcessObject(obj, "workspace")
+        -- Kalau Model (drop berupa model)
+        elseif obj:IsA("Model") then
+            -- Cek apakah model ini punya attribute item
+            local hasItemAttr = false
+            for _, attrKey in ipairs({"Id","ID","ItemId","item_id","Type"}) do
+                if obj:GetAttribute(attrKey) then hasItemAttr = true; break end
+            end
+            if hasItemAttr then
+                ProcessObject(obj, "workspace/model")
+            else
+                -- Scan isi folder/model (bisa jadi folder drop)
+                for _, child in pairs(obj:GetChildren()) do
+                    if child:IsA("BasePart") or child:IsA("Model") then
+                        ProcessObject(child, obj.Name)
+                    end
+                end
+            end
+        -- Kalau Folder kemungkinan folder drop
+        elseif obj:IsA("Folder") then
+            for _, child in pairs(obj:GetChildren()) do
+                ProcessObject(child, obj.Name)
+            end
+        end
+    end
+
     table.sort(found, function(a,b) return a.Count > b.Count end)
     return found
 end
