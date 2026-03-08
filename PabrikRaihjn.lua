@@ -68,6 +68,14 @@ local function SendWebhook(content)
     end
 end
 
+local function FormatElapsed()
+    local elapsed = os.time() - (getgenv().PabrikStartTime or os.time())
+    local h = math.floor(elapsed / 3600)
+    local m = math.floor((elapsed % 3600) / 60)
+    local s = elapsed % 60
+    return string.format("%02d:%02d:%02d", h, m, s)
+end
+
 -- ============================================================
 -- INVENTORY
 -- ============================================================
