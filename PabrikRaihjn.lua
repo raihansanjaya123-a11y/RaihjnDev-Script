@@ -933,32 +933,6 @@ local uiOk, uiErr = pcall(function()
 
     MainTab:CreateSection("Item Settings")
     local availableItems = ScanAvailableItems()
-
-    -- Scan World Drops button
-    MainTab:CreateButton({
-        Name="Scan World Drops",
-        Callback=function()
-            local drops = ScanWorldDrops()
-            if #drops == 0 then
-                Rayfield:Notify({Title="Scan World", Content="Tidak ada drop ditemukan!", Duration=3})
-                return
-            end
-            -- Print ke console lengkap
-            print("========= WORLD DROPS =========")
-            for _, d in ipairs(drops) do
-                print(string.format("[%s] %s — %dx", d.Folder, d.Id, d.Count))
-            end
-            print("================================")
-            -- Notify ringkasan top 3
-            local msg = ""
-            for i = 1, math.min(3, #drops) do
-                msg = msg .. drops[i].Id .. " x"..drops[i].Count.."\n"
-            end
-            if #drops > 3 then msg = msg .. "(+"..( #drops-3).." lainnya, cek console)" end
-            Rayfield:Notify({Title="World Drops ("..#drops.." item)", Content=msg, Duration=6})
-        end,
-    })
-
     local blockDropdown = MainTab:CreateDropdown({
         Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikBlockDrop",
         Callback=function(opt)
@@ -1081,3 +1055,4 @@ end)
 if not uiOk then warn("[Pabrik] UI Error: "..tostring(uiErr)) end
 
 print("[Pabrik v3] Load selesai! Heartbeat:", getgenv().RaihjnHeartbeatPabrik ~= nil)
+
