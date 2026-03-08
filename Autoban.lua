@@ -15,7 +15,6 @@ local AutoBanEnabled   = false
 local AutoLeaveEnabled = false
 local Whitelist        = {}
 
--- Simpan ke getgenv supaya bisa dibaca script lain (misal webhook pabrik)
 getgenv().TotalBanned = getgenv().TotalBanned or 0
 
 local ModKeywords = {
@@ -113,7 +112,7 @@ for _, player in pairs(Players:GetPlayers()) do
 end
 
 -- ============================================================
--- UI
+-- UI: AUTO BAN
 -- ============================================================
 MiscTab:CreateSection("Auto Ban")
 
@@ -148,6 +147,9 @@ MiscTab:CreateInput({
     end,
 })
 
+-- ============================================================
+-- UI: AUTO MOD DETECTOR
+-- ============================================================
 MiscTab:CreateSection("Auto Mod Detector")
 
 MiscTab:CreateToggle({
@@ -168,5 +170,128 @@ MiscTab:CreateButton({
         if list == "" then list = "Tidak ada player lain" end
         print("[PlayerList]\n"..list)
         Rayfield:Notify({Title="Player Di Server", Content=list, Duration=8})
+    end,
+})
+
+-- ============================================================
+-- UI: WORLD SCAN
+-- ============================================================
+local function ScanWorldDrops()
+    local found, seen = {}, {}
+    local scanFolders = {"Drops","Gems","Items","WorldDrops","Pickups","Collectibles"}
+    for _, fname in ipairs(scanFolders) do
+        local folder = workspace:FindFirstChild(fname)
+        if folder then
+            for _, obj in pairs(folder:GetChildren()) do
+                local id = nil
+                for _, attrKey in ipairs({"Id","ID","ItemId","item_id","Type"}) do
+                    local v = obj:GetAttribute(attrKey)
+                    if v and tostring(v) ~= "" then id = tostring(v); break end
+                end
+                if not id then
+                    for _, c in ipairs(obj:GetDescendants()) do
+                        if c:IsA("StringValue") and c.Name:lower():find("id") and c.Value ~= "" then
+                            id = c.Value; break
+                        end
+                    end
+                end
+                if not id then id = obj.Name end
+                if id and id ~= "" and not seen[id] then
+                    seen[id] = true
+                    local count = 0
+                    for _, o2 in pairs(folder:GetChildren()) do
+                        local oid = o2:GetAttribute("Id") or o2:GetAttribute("ID") or o2:GetAttribute("ItemId") or o2.Name
+                        if tostring(oid) == id then count = count + 1 end
+                    end
+                    table.insert(found, {Id=id, Count=count, Folder=fname})
+                end
+            end
+        end
+    end
+    table.sort(found, function(a,b) return a.Count > b.Count end)
+    return found
+end
+
+MiscTab:CreateSection("World Scan")
+
+MiscTab:CreateButton({
+    Name="🔍 Scan World Drops Sekarang",
+    Callback=function()
+        local drops = ScanWorldDrops()
+        if #drops == 0 then
+            Rayfield:Notify({Title="World Scan", Content="Tidak ada drop ditemukan di world!", Duration=3})
+            return
+        end
+        print("========= WORLD DROPS =========")
+        for _, d in ipairs(drops) do
+            print(string.format("[%s] %s — %dx", d.Folder, d.Id, d.Count))
+        end
+        print("Total: "..#drops.." item unik")
+        print("================================")
+        local msg = ""
+        for i = 1, math.min(5, #drops) do
+            msg = msg..drops[i].Id.." ×"..drops[i].Count.."\n"
+        end
+        if #drops > 5 then msg = msg.."(+"..( #drops-5).." lainnya — cek console)" end
+        Rayfield:Notify({Title="World Drops ("..#drops.." item)", Content=msg, Duration=8})
+    end,
+})
+
+MiscTab:CreateButton({
+    Name="📤 Kirim World Drops ke Discord",
+    Callback=function()
+        if not getgenv().WebhookURL or getgenv().WebhookURL == "" then
+            Rayfield:Notify({Title="Webhook", Content="Isi URL dulu di tab Webhook!", Duration=3}); return
+        end
+        local drops = ScanWorldDrops()
+        if #drops == 0 then
+            Rayfield:Notify({Title="World Scan", Content="Tidak ada drop ditemukan!", Duration=3}); return
+        end
+        task.spawn(function()
+            local msg = "🌍 **WORLD DROPS SCAN**\n"..
+                        "👤 `"..LP.Name.."`  |  🎮 `"..game.Name.."`\n\n"
+            for i, d in ipairs(drops) do
+                msg = msg.."[`"..d.Folder.."`] `"..d.Id.."` — **"..d.Count.."x**\n"
+                if i >= 20 then msg = msg.."... dan "..(#drops-20).." item lainnya\n"; break end
+            end
+            if getgenv().SendWebhook then getgenv().SendWebhook(msg) end
+        end)
+        Rayfield:Notify({Title="World Scan", Content="Dikirim ke Discord!", Duration=3})
+    end,
+})
+
+local autoScanMiscEnabled = false
+local autoScanMiscLoop    = nil
+
+MiscTab:CreateToggle({
+    Name="Auto Scan Tiap 60 Detik",
+    CurrentValue=false,
+    Flag="AutoWorldScanMiscToggle",
+    Callback=function(v)
+        autoScanMiscEnabled = v
+        if v then
+            autoScanMiscLoop = task.spawn(function()
+                while autoScanMiscEnabled do
+                    task.wait(60)
+                    if not autoScanMiscEnabled then break end
+                    local drops = ScanWorldDrops()
+                    if #drops > 0 and getgenv().WebhookURL and getgenv().WebhookURL ~= "" then
+                        local msg = "⏱️ **AUTO SCAN WORLD DROPS**\n"..
+                                    "👤 `"..LP.Name.."`\n\n"
+                        for i, d in ipairs(drops) do
+                            msg = msg.."`"..d.Id.."` — **"..d.Count.."x**\n"
+                            if i >= 15 then break end
+                        end
+                        if getgenv().SendWebhook then getgenv().SendWebhook(msg) end
+                    end
+                    print("[AutoScan] Scan selesai, "..#drops.." item ditemukan")
+                end
+            end)
+        else
+            if autoScanMiscLoop then
+                pcall(function() task.cancel(autoScanMiscLoop) end)
+                autoScanMiscLoop = nil
+            end
+        end
     end,
 })
