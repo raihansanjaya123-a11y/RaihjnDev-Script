@@ -287,6 +287,51 @@ local function ZigzagPath(x1, x2, y1, y2, gap)
 end
 
 -- ============================================================
+-- SCAN WORLD DROPS
+-- ============================================================
+local function ScanWorldDrops()
+    local found, seen = {}, {}
+    -- Folder yang biasa dipakai CAW untuk drops
+    local scanFolders = {"Drops","Gems","Items","WorldDrops","Pickups","Collectibles"}
+    for _, fname in ipairs(scanFolders) do
+        local folder = workspace:FindFirstChild(fname)
+        if folder then
+            for _, obj in pairs(folder:GetChildren()) do
+                -- Ambil ID dari attribute
+                local id = nil
+                for _, attrKey in ipairs({"Id","ID","ItemId","item_id","Name","Type"}) do
+                    local v = obj:GetAttribute(attrKey)
+                    if v and tostring(v) ~= "" then id = tostring(v); break end
+                end
+                -- Kalau ga ada attribute, cek StringValue di dalamnya
+                if not id then
+                    for _, c in ipairs(obj:GetDescendants()) do
+                        if c:IsA("StringValue") and c.Name:lower():find("id") and c.Value ~= "" then
+                            id = c.Value; break
+                        end
+                    end
+                end
+                -- Fallback ke nama object
+                if not id then id = obj.Name end
+
+                if id and id ~= "" and not seen[id] then
+                    seen[id] = true
+                    -- Hitung jumlah yang ada di world
+                    local count = 0
+                    for _, o2 in pairs(folder:GetChildren()) do
+                        local oid = o2:GetAttribute("Id") or o2:GetAttribute("ID") or o2:GetAttribute("ItemId") or o2.Name
+                        if tostring(oid) == id then count = count + 1 end
+                    end
+                    table.insert(found, {Id=id, Count=count, Folder=fname})
+                end
+            end
+        end
+    end
+    table.sort(found, function(a,b) return a.Count > b.Count end)
+    return found
+end
+
+-- ============================================================
 -- DROP / UI HELPERS
 -- ============================================================
 local function CheckDropsAtGrid(gx, gy)
@@ -565,12 +610,43 @@ local mainCoro = coroutine.create(function()
         getgenv().PabrikIsRunning = true
         local ok, err = pcall(function()
             if not getgenv().EnablePabrik then return end
+
+            -- Webhook kalau seed/block belum dipilih
             if getgenv().SelectedSeed == "" or getgenv().SelectedBlock == "" then
-                print("[Pabrik] Tunggu seed/block dipilih..."); return
+                print("[Pabrik] Tunggu seed/block dipilih...")
+                task.spawn(function()
+                    SendWebhook(
+                        "⚠️ **[PABRIK] Seed/Block Belum Dipilih!**\n"..
+                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                        "🧱 Block: `"..(getgenv().SelectedBlock == "" and "BELUM DIPILIH" or getgenv().SelectedBlock).."`\n"..
+                        "🌿 Seed: `"..(getgenv().SelectedSeed == "" and "BELUM DIPILIH" or getgenv().SelectedSeed).."`"
+                    )
+                end)
+                return
             end
 
-            -- CEK AWAL
+            -- ========================
+            -- WEBHOOK: MULAI SIKLUS
+            -- ========================
+            local cycleNumAwal = getgenv().CycleCount + 1
             local blockAmtAwal = GetItemAmountByID(getgenv().SelectedBlock)
+            local seedAmtAwal  = GetItemAmountByID(getgenv().SelectedSeed)
+            local keputusan    = blockAmtAwal > getgenv().BlockThreshold
+                and "🔨 Block ada di inventory ("..blockAmtAwal.."x) → Farm block dulu"
+                or  "🌱 Block tidak ada / di threshold → Langsung plant"
+
+            task.spawn(function()
+                SendWebhook(
+                    "🚀 **[MULAI SIKLUS #"..cycleNumAwal.."]**\n"..
+                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n\n"..
+                    "📦 **Scan Inventory:**\n"..
+                    "🧱 Block: `"..blockAmtAwal.."x` (threshold: "..getgenv().BlockThreshold..")\n"..
+                    "🌿 Seed: `"..seedAmtAwal.."x` (keep: "..getgenv().KeepSeedAmt..")\n\n"..
+                    "🔀 **Keputusan:** "..keputusan
+                )
+            end)
+
+            -- CEK AWAL
             if blockAmtAwal > getgenv().BlockThreshold then
                 print("[Awal] Block banyak, farm block dulu")
                 walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
@@ -594,12 +670,34 @@ local mainCoro = coroutine.create(function()
             local skippedCount = 0
 
             for i, point in ipairs(plantPath) do
-                if not getgenv().EnablePabrik then break end
+                if not getgenv().EnablePabrik then
+                    -- Webhook toggle OFF saat plant
+                    task.spawn(function()
+                        SendWebhook(
+                            "🛑 **[PABRIK] Di-stop Manual Saat Plant**\n"..
+                            "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                            "📍 Berhenti di tile ke-`"..i.."` dari `"..#plantPath.."`"
+                        )
+                    end)
+                    break
+                end
                 if IsBlockedTile(point.X, point.Y) then
                     skippedCount = skippedCount + 1
                 else
                     local slot = GetSlotByItemID(getgenv().SelectedSeed)
-                    if not slot then print("[Plant] Seed habis di tile", i); break end
+                    if not slot then
+                        print("[Plant] Seed habis di tile", i)
+                        -- Webhook seed habis
+                        task.spawn(function()
+                            SendWebhook(
+                                "⚠️ **[FASE 1 — PLANT] Seed Habis!**\n"..
+                                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                                "📍 Berhenti di tile ke-`"..i.."` dari `"..#plantPath.."`\n"..
+                                "✅ Sudah ditanam: `"..#plantedTiles.."x`  |  ⛔ Skip: `"..skippedCount.."`"
+                            )
+                        end)
+                        break
+                    end
                     walkToGrid(point.X, point.Y)
                     EnsurePosition(point.X, point.Y)
                     if not getgenv().EnablePabrik then break end
@@ -613,7 +711,7 @@ local mainCoro = coroutine.create(function()
 
             local plantedCount = #plantedTiles
             local seedLeft     = GetItemAmountByID(getgenv().SelectedSeed)
-            local cycleNum     = getgenv().CycleCount + 1
+            local cycleNum     = cycleNumAwal
             print("[Plant] Selesai. Planted:", plantedCount, "Skip:", skippedCount)
 
             -- WEBHOOK FASE 1: PLANT
@@ -642,7 +740,15 @@ local mainCoro = coroutine.create(function()
             end)
 
             for _ = 1, waitTime do
-                if not getgenv().EnablePabrik then break end
+                if not getgenv().EnablePabrik then
+                    task.spawn(function()
+                        SendWebhook(
+                            "🛑 **[PABRIK] Di-stop Manual Saat Wait**\n"..
+                            "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
+                        )
+                    end)
+                    break
+                end
                 task.wait(1)
             end
 
@@ -653,32 +759,93 @@ local mainCoro = coroutine.create(function()
             local seedBefore  = GetItemAmountByID(getgenv().SelectedSeed)
 
             for _, point in ipairs(plantedTiles) do
-                if not getgenv().EnablePabrik then break end
+                if not getgenv().EnablePabrik then
+                    task.spawn(function()
+                        SendWebhook(
+                            "🛑 **[PABRIK] Di-stop Manual Saat Harvest**\n"..
+                            "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
+                        )
+                    end)
+                    break
+                end
                 walkToGrid(point.X, point.Y)
                 EnsurePosition(point.X, point.Y)
                 DoBreak(point.X, point.Y)
             end
-            -- Sweep balik — collect drops per tile
+            -- ============================================================
+            -- SWEEP BALIK — scan per Y dari Y terakhir harvest → Y pertama
+            -- Per Y: scan seluruh X=StartX-EndX, collect drop max 0.5 detik per tile
+            -- ============================================================
             if getgenv().EnablePabrik then
-                local prevX, prevY = nil, nil
-                for i = #plantedTiles, 1, -1 do
-                    if not getgenv().EnablePabrik then break end
-                    local tx = plantedTiles[i].X
-                    local ty = plantedTiles[i].Y
-                    if tx ~= prevX or ty ~= prevY then
-                        SetHitBoxPos(tx, ty)
-                        task.wait(getgenv().StepDelay)
-                        -- Tunggu collect drop di tile ini
-                        local t = 0
-                        while CheckDropsAtGrid(tx, ty) and t < 10 and getgenv().EnablePabrik do
-                            task.wait(0.1); t = t + 1
-                        end
-                        prevX, prevY = tx, ty
+                -- Kumpulkan semua Y unik yang di-plant
+                local seenY = {}
+                local yList = {}
+                for _, tile in ipairs(plantedTiles) do
+                    if not seenY[tile.Y] then
+                        seenY[tile.Y] = true
+                        table.insert(yList, tile.Y)
                     end
                 end
-                -- Jalan smooth ke BreakPos supaya tidak blink
+
+                -- Sort Y: dari Y terakhir harvest → Y pertama
+                -- Kalau StartY <= EndY berarti farm naik → sweep dari Y besar ke kecil
+                -- Kalau StartY > EndY berarti farm turun → sweep dari Y kecil ke besar
+                local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
+                table.sort(yList, function(a, b)
+                    return farmGoUp and (a > b) or (a < b)
+                end)
+
+                for _, gy in ipairs(yList) do
+                    if not getgenv().EnablePabrik then break end
+
+                    -- Jalan ke tengah X di Y ini dulu
+                    local midX = math.floor((getgenv().PabrikStartX + getgenv().PabrikEndX) / 2)
+                    walkToGrid(midX, gy)
+
+                    -- Verifikasi Y sudah benar
+                    local retryY = 0
+                    while retryY < 3 do
+                        local _, cy = GetMyPosition()
+                        if cy == gy then break end
+                        SetHitBoxPos(midX, gy)
+                        task.wait(0.1)
+                        retryY = retryY + 1
+                    end
+
+                    -- Scan seluruh X=StartX sampai EndX di Y ini
+                    for gx = getgenv().PabrikStartX, getgenv().PabrikEndX do
+                        if not getgenv().EnablePabrik then break end
+                        if CheckDropsAtGrid(gx, gy) then
+                            walkToGrid(gx, gy)
+                            -- Verifikasi posisi X
+                            local retryX = 0
+                            while retryX < 3 do
+                                local cx, cy = GetMyPosition()
+                                if cx == gx and cy == gy then break end
+                                SetHitBoxPos(gx, gy)
+                                task.wait(0.05)
+                                retryX = retryX + 1
+                            end
+                            -- Tunggu collect max 0.5 detik lalu lanjut
+                            local t = 0
+                            while CheckDropsAtGrid(gx, gy) and t < 5 and getgenv().EnablePabrik do
+                                task.wait(0.1); t = t + 1
+                            end
+                        end
+                    end
+                end
+
+                -- Selesai sweep → jalan ke BreakPos dengan verifikasi
                 if getgenv().EnablePabrik then
                     walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
+                    local retryB = 0
+                    while retryB < 3 do
+                        local cx, cy = GetMyPosition()
+                        if cx == getgenv().BreakPosX and cy == getgenv().BreakPosY then break end
+                        SetHitBoxPos(getgenv().BreakPosX, getgenv().BreakPosY)
+                        task.wait(0.1)
+                        retryB = retryB + 1
+                    end
                 end
             end
 
@@ -775,6 +942,31 @@ local uiOk, uiErr = pcall(function()
 
     MainTab:CreateSection("Item Settings")
     local availableItems = ScanAvailableItems()
+
+    -- Scan World Drops button
+    MainTab:CreateButton({
+        Name="Scan World Drops",
+        Callback=function()
+            local drops = ScanWorldDrops()
+            if #drops == 0 then
+                Rayfield:Notify({Title="Scan World", Content="Tidak ada drop ditemukan!", Duration=3})
+                return
+            end
+            -- Print ke console lengkap
+            print("========= WORLD DROPS =========")
+            for _, d in ipairs(drops) do
+                print(string.format("[%s] %s — %dx", d.Folder, d.Id, d.Count))
+            end
+            print("================================")
+            -- Notify ringkasan top 3
+            local msg = ""
+            for i = 1, math.min(3, #drops) do
+                msg = msg .. drops[i].Id .. " x"..drops[i].Count.."\n"
+            end
+            if #drops > 3 then msg = msg .. "(+"..( #drops-3).." lainnya, cek console)" end
+            Rayfield:Notify({Title="World Drops ("..#drops.." item)", Content=msg, Duration=6})
+        end,
+    })
 
     local blockDropdown = MainTab:CreateDropdown({
         Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikBlockDrop",
