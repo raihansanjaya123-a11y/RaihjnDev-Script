@@ -1,6 +1,5 @@
 -- ============================================================
--- SCRIPT PABRIK v3 - FIXED LOAD + WEBHOOK + BLOCK DETECTOR
--- Webhook dikirim via getgenv().SendWebhook dari loader
+-- SCRIPT PABRIK v3 + WEBHOOK PER FASE
 -- ============================================================
 
 if getgenv().RaihjnHeartbeatPabrik then
@@ -19,39 +18,33 @@ LP.Idled:Connect(function()
     VirtualUser:ClickButton2(Vector2.new())
 end)
 
--- ============================================================
--- GLOBALS
--- ============================================================
-getgenv().GridSize         = getgenv().GridSize         or 4.5
-getgenv().HitCount         = getgenv().HitCount         or 3
-getgenv().EnablePabrik     = getgenv().EnablePabrik     or false
-getgenv().PabrikStartX     = getgenv().PabrikStartX     or 1
-getgenv().PabrikEndX       = getgenv().PabrikEndX       or 99
-getgenv().PabrikStartY     = getgenv().PabrikStartY     or 37
-getgenv().PabrikEndY       = getgenv().PabrikEndY       or 37
-getgenv().GrowthTime       = getgenv().GrowthTime       or 30
-getgenv().BreakPosX        = getgenv().BreakPosX        or 0
-getgenv().BreakPosY        = getgenv().BreakPosY        or 0
-getgenv().DropPosX         = getgenv().DropPosX         or 0
-getgenv().DropPosY         = getgenv().DropPosY         or 0
-getgenv().BlockThreshold   = getgenv().BlockThreshold   or 1
-getgenv().KeepSeedAmt      = getgenv().KeepSeedAmt      or 20
-getgenv().SelectedSeed     = getgenv().SelectedSeed     or ""
-getgenv().SelectedBlock    = getgenv().SelectedBlock    or ""
-getgenv().IsGhosting       = false
-getgenv().HoldCFrame       = nil
-getgenv().PlantHitCount    = getgenv().PlantHitCount    or 1
-getgenv().YGap             = getgenv().YGap             or 2
-getgenv().PlaceDelay       = getgenv().PlaceDelay       or 0.1
-getgenv().DropDelay        = getgenv().DropDelay        or 0.5
-getgenv().StepDelay        = getgenv().StepDelay        or 0.1
-getgenv().BreakDelay       = getgenv().BreakDelay       or 0.15
+getgenv().GridSize       = getgenv().GridSize       or 4.5
+getgenv().HitCount       = getgenv().HitCount       or 3
+getgenv().EnablePabrik   = getgenv().EnablePabrik   or false
+getgenv().PabrikStartX   = getgenv().PabrikStartX   or 1
+getgenv().PabrikEndX     = getgenv().PabrikEndX     or 99
+getgenv().PabrikStartY   = getgenv().PabrikStartY   or 37
+getgenv().PabrikEndY     = getgenv().PabrikEndY     or 37
+getgenv().GrowthTime     = getgenv().GrowthTime     or 30
+getgenv().BreakPosX      = getgenv().BreakPosX      or 0
+getgenv().BreakPosY      = getgenv().BreakPosY      or 0
+getgenv().DropPosX       = getgenv().DropPosX       or 0
+getgenv().DropPosY       = getgenv().DropPosY       or 0
+getgenv().BlockThreshold = getgenv().BlockThreshold or 1
+getgenv().KeepSeedAmt    = getgenv().KeepSeedAmt    or 20
+getgenv().SelectedSeed   = getgenv().SelectedSeed   or ""
+getgenv().SelectedBlock  = getgenv().SelectedBlock  or ""
+getgenv().IsGhosting     = false
+getgenv().HoldCFrame     = nil
+getgenv().PlantHitCount  = getgenv().PlantHitCount  or 1
+getgenv().YGap           = getgenv().YGap           or 2
+getgenv().PlaceDelay     = getgenv().PlaceDelay     or 0.1
+getgenv().DropDelay      = getgenv().DropDelay      or 0.5
+getgenv().StepDelay      = getgenv().StepDelay      or 0.1
+getgenv().BreakDelay     = getgenv().BreakDelay     or 0.15
 getgenv().TotalDropAllTime = getgenv().TotalDropAllTime or 0
 getgenv().CycleCount       = getgenv().CycleCount       or 0
 
--- ============================================================
--- LOAD MODUL
--- ============================================================
 local PlayerMovement
 pcall(function() PlayerMovement = require(LP.PlayerScripts:WaitForChild("PlayerMovement")) end)
 
@@ -166,19 +159,15 @@ local function SetHitBoxPos(x, y)
     if not h then return end
     local pos = Vector3.new(x * getgenv().GridSize, y * getgenv().GridSize, h.Position.Z)
     h.CFrame = CFrame.new(pos)
-    -- Sync HRP hanya kalau posisinya jauh, supaya tidak fight physics engine
     pcall(function()
         local char = LP.Character
         if char then
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if hrp and not hrp.Anchored then
-                local diff = (hrp.Position - Vector3.new(pos.X, pos.Y, hrp.Position.Z)).Magnitude
-                if diff > getgenv().GridSize then
-                    -- Jauh banget, baru sync HRP
-                    hrp.CFrame = CFrame.new(Vector3.new(pos.X, pos.Y, hrp.Position.Z))
-                    hrp.AssemblyLinearVelocity  = Vector3.zero
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                end
+                local hrpPos = hrp.Position
+                hrp.CFrame = CFrame.new(Vector3.new(pos.X, pos.Y, hrpPos.Z))
+                hrp.AssemblyLinearVelocity  = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
             end
         end
     end)
@@ -195,22 +184,14 @@ local function SetHitBoxPos(x, y)
 end
 
 local function walkToGrid(targetX, targetY)
-    local maxSteps = math.abs(targetX - (select(1, GetMyPosition()))) +
-                     math.abs(targetY - (select(2, GetMyPosition()))) + 10
-    local steps = 0
     local cx, cy = GetMyPosition()
-    while (cx ~= targetX or cy ~= targetY) and steps < maxSteps do
+    while cx ~= targetX or cy ~= targetY do
         if not getgenv().EnablePabrik then break end
         if cx ~= targetX then cx = cx + (targetX > cx and 1 or -1)
         else cy = cy + (targetY > cy and 1 or -1) end
         SetHitBoxPos(cx, cy)
         task.wait(getgenv().StepDelay)
-        -- Re-read posisi setelah step supaya tidak drift
-        local rx, ry = GetMyPosition()
-        if rx == targetX and ry == targetY then break end
-        steps = steps + 1
     end
-    -- Paksa ke target di akhir
     SetHitBoxPos(targetX, targetY)
 end
 
@@ -287,54 +268,8 @@ local function ZigzagPath(x1, x2, y1, y2, gap)
 end
 
 -- ============================================================
--- SCAN WORLD DROPS
+-- DROP HELPERS
 -- ============================================================
-local function ScanWorldDrops()
-    local found, seen = {}, {}
-    -- Folder yang biasa dipakai CAW untuk drops
-    local scanFolders = {"Drops","Gems","Items","WorldDrops","Pickups","Collectibles"}
-    for _, fname in ipairs(scanFolders) do
-        local folder = workspace:FindFirstChild(fname)
-        if folder then
-            for _, obj in pairs(folder:GetChildren()) do
-                -- Ambil ID dari attribute
-                local id = nil
-                for _, attrKey in ipairs({"Id","ID","ItemId","item_id","Name","Type"}) do
-                    local v = obj:GetAttribute(attrKey)
-                    if v and tostring(v) ~= "" then id = tostring(v); break end
-                end
-                -- Kalau ga ada attribute, cek StringValue di dalamnya
-                if not id then
-                    for _, c in ipairs(obj:GetDescendants()) do
-                        if c:IsA("StringValue") and c.Name:lower():find("id") and c.Value ~= "" then
-                            id = c.Value; break
-                        end
-                    end
-                end
-                -- Fallback ke nama object
-                if not id then id = obj.Name end
-
-                if id and id ~= "" and not seen[id] then
-                    seen[id] = true
-                    -- Hitung jumlah yang ada di world
-                    local count = 0
-                    for _, o2 in pairs(folder:GetChildren()) do
-                        local oid = o2:GetAttribute("Id") or o2:GetAttribute("ID") or o2:GetAttribute("ItemId") or o2.Name
-                        if tostring(oid) == id then count = count + 1 end
-                    end
-                    table.insert(found, {Id=id, Count=count, Folder=fname})
-                end
-            end
-        end
-    end
-    table.sort(found, function(a,b) return a.Count > b.Count end)
-    return found
-end
-
--- ============================================================
--- DROP / UI HELPERS
--- ============================================================
-
 local function CheckDropsAtGrid(gx, gy)
     for _, fname in ipairs({"Drops","Gems"}) do
         local folder = workspace:FindFirstChild(fname)
@@ -367,6 +302,7 @@ local function CheckDropsAtGrid(gx, gy)
     end
     return false
 end
+
 local function GetDropRemote()
     local rem = RS:FindFirstChild("Remotes")
     if not rem then return nil end
@@ -382,7 +318,7 @@ local function GetPromptRemote()
 end
 
 local function DropItemLogic(targetID, dropAmount)
-    local slot = GetSlotByItemID(targetID)
+    local slot    = GetSlotByItemID(targetID)
     if not slot then return false end
     local dropR   = GetDropRemote()
     local promptR = GetPromptRemote()
@@ -499,13 +435,15 @@ local function DoBreak(gx, gy)
 end
 
 -- ============================================================
--- FARM BLOCK LOOP
+-- FARM BLOCK LOOP (logic asli + collect drop)
 -- ============================================================
 local function DoFarmBlockLoop(breakPosX, breakPosY)
     local BreakTarget = Vector2.new(breakPosX - 1, breakPosY)
     local remPlace = GetRemotePlace()
     local remBreak = GetRemoteBreak()
-    if not remPlace or not remBreak then warn("[Block] Remote tidak ada!"); return end
+    if not remPlace or not remBreak then
+        warn("[Block] Remote tidak ada!"); return
+    end
     while getgenv().EnablePabrik do
         local currentAmt = GetItemAmountByID(getgenv().SelectedBlock)
         if currentAmt <= getgenv().BlockThreshold then
@@ -609,45 +547,28 @@ local mainCoro = coroutine.create(function()
         getgenv().PabrikIsRunning = true
         local ok, err = pcall(function()
             if not getgenv().EnablePabrik then return end
-
-            -- Webhook kalau seed/block belum dipilih
             if getgenv().SelectedSeed == "" or getgenv().SelectedBlock == "" then
                 print("[Pabrik] Tunggu seed/block dipilih...")
-                task.spawn(function()
-                    SendWebhook(
-                        "⚠️ **[PABRIK] Seed/Block Belum Dipilih!**\n"..
-                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                        "🧱 Block: `"..(getgenv().SelectedBlock == "" and "BELUM DIPILIH" or getgenv().SelectedBlock).."`\n"..
-                        "🌿 Seed: `"..(getgenv().SelectedSeed == "" and "BELUM DIPILIH" or getgenv().SelectedSeed).."`"
-                    )
-                end)
+                SendWebhook(
+                    "⚠️ **[PABRIK] Seed/Block Belum Dipilih!**\n"..
+                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                    "🧱 Block: `"..(getgenv().SelectedBlock=="" and "BELUM DIPILIH" or getgenv().SelectedBlock).."`\n"..
+                    "🌿 Seed: `"..(getgenv().SelectedSeed=="" and "BELUM DIPILIH" or getgenv().SelectedSeed).."`"
+                )
                 return
             end
 
-            -- ========================
-            -- WEBHOOK: MULAI SIKLUS
-            -- ========================
-            local cycleNumAwal = getgenv().CycleCount + 1
+            local cycleNum = getgenv().CycleCount + 1
+
+            -- CEK AWAL: block sudah banyak
             local blockAmtAwal = GetItemAmountByID(getgenv().SelectedBlock)
-            local seedAmtAwal  = GetItemAmountByID(getgenv().SelectedSeed)
-            local keputusan    = blockAmtAwal > getgenv().BlockThreshold
-                and "🔨 Block ada di inventory ("..blockAmtAwal.."x) → Farm block dulu"
-                or  "🌱 Block tidak ada / di threshold → Langsung plant"
-
-            task.spawn(function()
-                SendWebhook(
-                    "🚀 **[MULAI SIKLUS #"..cycleNumAwal.."]**\n"..
-                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n\n"..
-                    "📦 **Scan Inventory:**\n"..
-                    "🧱 Block: `"..blockAmtAwal.."x` (threshold: "..getgenv().BlockThreshold..")\n"..
-                    "🌿 Seed: `"..seedAmtAwal.."x` (keep: "..getgenv().KeepSeedAmt..")\n\n"..
-                    "🔀 **Keputusan:** "..keputusan
-                )
-            end)
-
-            -- CEK AWAL
             if blockAmtAwal > getgenv().BlockThreshold then
-                print("[Awal] Block banyak, farm block dulu")
+                print("[Awal] Block banyak ("..blockAmtAwal.."), farm block dulu")
+                SendWebhook(
+                    "🚀 **[MULAI SIKLUS #"..cycleNum.."]**\n"..
+                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                    "🧱 Block banyak (`"..blockAmtAwal.."x`), farm block dulu"
+                )
                 walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
                 task.wait(0.5)
                 DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
@@ -657,12 +578,20 @@ local mainCoro = coroutine.create(function()
                 return
             end
 
+            -- WEBHOOK: MULAI SIKLUS
+            SendWebhook(
+                "🚀 **[MULAI SIKLUS #"..cycleNum.."]**\n"..
+                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                "🌿 Seed: `"..getgenv().SelectedSeed.."`  |  🧱 Block: `"..getgenv().SelectedBlock.."`"
+            )
+
             -- FASE 1: PLANTING
             local plantPath = ZigzagPath(
                 getgenv().PabrikStartX, getgenv().PabrikEndX,
                 getgenv().PabrikStartY, getgenv().PabrikEndY,
                 getgenv().YGap
             )
+            print("[Plant] Total tile:", #plantPath)
 
             local lastPlantedX, lastPlantedY = nil, nil
             local plantedTiles = {}
@@ -670,14 +599,11 @@ local mainCoro = coroutine.create(function()
 
             for i, point in ipairs(plantPath) do
                 if not getgenv().EnablePabrik then
-                    -- Webhook toggle OFF saat plant
-                    task.spawn(function()
-                        SendWebhook(
-                            "🛑 **[PABRIK] Di-stop Manual Saat Plant**\n"..
-                            "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                            "📍 Berhenti di tile ke-`"..i.."` dari `"..#plantPath.."`"
-                        )
-                    end)
+                    SendWebhook(
+                        "🛑 **[STOP MANUAL — PLANT]** Siklus #"..cycleNum.."\n"..
+                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                        "🌱 Planted: `"..#plantedTiles.."x`  |  Tile ke-`"..i.."`"
+                    )
                     break
                 end
                 if IsBlockedTile(point.X, point.Y) then
@@ -686,15 +612,11 @@ local mainCoro = coroutine.create(function()
                     local slot = GetSlotByItemID(getgenv().SelectedSeed)
                     if not slot then
                         print("[Plant] Seed habis di tile", i)
-                        -- Webhook seed habis
-                        task.spawn(function()
-                            SendWebhook(
-                                "⚠️ **[FASE 1 — PLANT] Seed Habis!**\n"..
-                                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                                "📍 Berhenti di tile ke-`"..i.."` dari `"..#plantPath.."`\n"..
-                                "✅ Sudah ditanam: `"..#plantedTiles.."x`  |  ⛔ Skip: `"..skippedCount.."`"
-                            )
-                        end)
+                        SendWebhook(
+                            "⚠️ **[SEED HABIS — PLANT]** Siklus #"..cycleNum.."\n"..
+                            "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                            "🌱 Planted: `"..#plantedTiles.."x`  |  Tile ke-`"..i.."`"
+                        )
                         break
                     end
                     walkToGrid(point.X, point.Y)
@@ -709,43 +631,30 @@ local mainCoro = coroutine.create(function()
             end
 
             local plantedCount = #plantedTiles
-            local seedLeft     = GetItemAmountByID(getgenv().SelectedSeed)
-            local cycleNum     = cycleNumAwal
             print("[Plant] Selesai. Planted:", plantedCount, "Skip:", skippedCount)
 
-            -- WEBHOOK FASE 1: PLANT
-            task.spawn(function()
-                SendWebhook(
-                    "🌱 **[FASE 1 — PLANT]** Siklus #"..cycleNum.."\n"..
-                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                    "✅ Ditanam: `"..plantedCount.."x`  |  ⛔ Skip: `"..skippedCount.."`\n"..
-                    "📍 Posisi terakhir: `X="..tostring(lastPlantedX).." Y="..tostring(lastPlantedY).."`\n"..
-                    "🌿 Seed tersisa: `"..seedLeft.."x`"
-                )
-            end)
+            -- WEBHOOK FASE 1
+            SendWebhook(
+                "🌱 **[FASE 1 — PLANT]** Siklus #"..cycleNum.."\n"..
+                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                "✅ Planted: `"..plantedCount.."x`  |  ⛔ Skip: `"..skippedCount.."`\n"..
+                "🌿 Seed tersisa: `"..GetItemAmountByID(getgenv().SelectedSeed).."x`"
+            )
 
             -- FASE 2: WAITING
             if not getgenv().EnablePabrik then return end
-            local waitTime = getgenv().GrowthTime
-            print("[Wait] Tunggu", waitTime, "detik")
-
-            -- WEBHOOK FASE 2: WAIT
-            task.spawn(function()
-                SendWebhook(
-                    "⏳ **[FASE 2 — WAIT]** Siklus #"..cycleNum.."\n"..
-                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                    "⏱️ Menunggu: `"..waitTime.." detik`"
-                )
-            end)
-
-            for _ = 1, waitTime do
+            print("[Wait] Tunggu", getgenv().GrowthTime, "detik")
+            SendWebhook(
+                "⏳ **[FASE 2 — WAIT]** Siklus #"..cycleNum.."\n"..
+                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                "⏱️ Menunggu: `"..getgenv().GrowthTime.." detik`"
+            )
+            for _ = 1, getgenv().GrowthTime do
                 if not getgenv().EnablePabrik then
-                    task.spawn(function()
-                        SendWebhook(
-                            "🛑 **[PABRIK] Di-stop Manual Saat Wait**\n"..
-                            "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
-                        )
-                    end)
+                    SendWebhook(
+                        "🛑 **[STOP MANUAL — WAIT]** Siklus #"..cycleNum.."\n"..
+                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
+                    )
                     break
                 end
                 task.wait(1)
@@ -759,24 +668,20 @@ local mainCoro = coroutine.create(function()
 
             for _, point in ipairs(plantedTiles) do
                 if not getgenv().EnablePabrik then
-                    task.spawn(function()
-                        SendWebhook(
-                            "🛑 **[PABRIK] Di-stop Manual Saat Harvest**\n"..
-                            "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
-                        )
-                    end)
+                    SendWebhook(
+                        "🛑 **[STOP MANUAL — HARVEST]** Siklus #"..cycleNum.."
+"..
+                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
+                    )
                     break
                 end
                 walkToGrid(point.X, point.Y)
                 EnsurePosition(point.X, point.Y)
                 DoBreak(point.X, point.Y)
             end
-            -- ============================================================
-            -- SWEEP BALIK — scan per Y dari Y terakhir harvest → Y pertama
-            -- Per Y: scan seluruh X=StartX-EndX, collect drop max 0.5 detik per tile
-            -- ============================================================
+            -- SWEEP BALIK — per Y dari Y terakhir harvest → Y pertama
             if getgenv().EnablePabrik then
-                -- Kumpulkan semua Y unik yang di-plant
+                -- Kumpulkan semua Y unik
                 local seenY = {}
                 local yList = {}
                 for _, tile in ipairs(plantedTiles) do
@@ -785,10 +690,8 @@ local mainCoro = coroutine.create(function()
                         table.insert(yList, tile.Y)
                     end
                 end
-
                 -- Sort Y: dari Y terakhir harvest → Y pertama
-                -- Kalau StartY <= EndY berarti farm naik → sweep dari Y besar ke kecil
-                -- Kalau StartY > EndY berarti farm turun → sweep dari Y kecil ke besar
+                -- farmGoUp = StartY <= EndY → sweep dari Y besar ke kecil
                 local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
                 table.sort(yList, function(a, b)
                     return farmGoUp and (a > b) or (a < b)
@@ -796,11 +699,9 @@ local mainCoro = coroutine.create(function()
 
                 for _, gy in ipairs(yList) do
                     if not getgenv().EnablePabrik then break end
-
                     -- Jalan ke tengah X di Y ini dulu
                     local midX = math.floor((getgenv().PabrikStartX + getgenv().PabrikEndX) / 2)
                     walkToGrid(midX, gy)
-
                     -- Verifikasi Y sudah benar
                     local retryY = 0
                     while retryY < 3 do
@@ -810,13 +711,12 @@ local mainCoro = coroutine.create(function()
                         task.wait(0.1)
                         retryY = retryY + 1
                     end
-
                     -- Jalan ke setiap tile X — collect otomatis saat badan lewat
                     for gx = getgenv().PabrikStartX, getgenv().PabrikEndX do
                         if not getgenv().EnablePabrik then break end
                         walkToGrid(gx, gy)
-                        -- Verifikasi Y tidak blink setelah jalan
-                        local cx, cy = GetMyPosition()
+                        -- Verifikasi Y tidak blink
+                        local _, cy = GetMyPosition()
                         if cy ~= gy then
                             SetHitBoxPos(gx, gy)
                             task.wait(0.1)
@@ -825,7 +725,7 @@ local mainCoro = coroutine.create(function()
                     end
                 end
 
-                -- Selesai sweep → jalan ke BreakPos dengan verifikasi
+                -- Selesai sweep → jalan ke BreakPos
                 if getgenv().EnablePabrik then
                     walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
                     local retryB = 0
@@ -842,37 +742,32 @@ local mainCoro = coroutine.create(function()
             local blockGained = GetItemAmountByID(getgenv().SelectedBlock) - blockBefore
             local seedGained  = GetItemAmountByID(getgenv().SelectedSeed)  - seedBefore
 
-            -- WEBHOOK FASE 3: HARVEST
-            task.spawn(function()
-                SendWebhook(
-                    "⛏️ **[FASE 3 — HARVEST]** Siklus #"..cycleNum.."\n"..
-                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                    "🧱 Block didapat: `"..blockGained.."x`\n"..
-                    "🌿 Seed didapat: `"..seedGained.."x`"
-                )
-            end)
+            -- WEBHOOK FASE 3
+            SendWebhook(
+                "⛏️ **[FASE 3 — HARVEST]** Siklus #"..cycleNum.."\n"..
+                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                "🧱 Block didapat: `"..blockGained.."x`\n"..
+                "🌿 Seed didapat: `"..seedGained.."x`"
+            )
 
             -- FASE 4: FARM BLOCK
             if not getgenv().EnablePabrik then return end
             print("[Block] Farm block")
-            -- Sudah di BreakPos dari sweep balik, langsung mulai
-            task.wait(0.3)
+            walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
+            task.wait(0.5)
             local breakStart = os.time()
             DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
-            local breakSec  = os.time() - breakStart
-            local blockSisa = GetItemAmountByID(getgenv().SelectedBlock)
-            local bm = math.floor(breakSec / 60)
+            local breakSec = os.time() - breakStart
+            local bm = math.floor(breakSec/60)
             local bs = breakSec % 60
 
-            -- WEBHOOK FASE 4: BREAK
-            task.spawn(function()
-                SendWebhook(
-                    "🔨 **[FASE 4 — BREAK]** Siklus #"..cycleNum.."\n"..
-                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                    "⏱️ Durasi: `"..string.format("%02d:%02d", bm, bs).."`\n"..
-                    "🧱 Block tersisa: `"..blockSisa.."x`"
-                )
-            end)
+            -- WEBHOOK FASE 4
+            SendWebhook(
+                "🔨 **[FASE 4 — BREAK]** Siklus #"..cycleNum.."\n"..
+                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                "⏱️ Durasi: `"..string.format("%02d:%02d", bm, bs).."`\n"..
+                "🧱 Block tersisa: `"..GetItemAmountByID(getgenv().SelectedBlock).."x`"
+            )
 
             -- FASE 5: DROP SEED
             if not getgenv().EnablePabrik then return end
@@ -882,27 +777,24 @@ local mainCoro = coroutine.create(function()
             print("[Drop] Cycle:", droppedThisCycle, "| Total:", getgenv().TotalDropAllTime)
 
             -- WEBHOOK FASE 5 + RINGKASAN
-            task.spawn(function()
-                SendWebhook(
-                    "📦 **[FASE 5 — DROP]** Siklus #"..getgenv().CycleCount.."\n"..
-                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                    "🌱 Drop cycle ini: `"..droppedThisCycle.."x`\n"..
-                    "📦 Total all time: `"..getgenv().TotalDropAllTime.."x`\n\n"..
-                    "━━━━━━━━━━━━━━━━━━━━━━\n"..
-                    "📊 **RINGKASAN SIKLUS #"..getgenv().CycleCount.."**\n"..
-                    "🌿 Seed: `"..getgenv().SelectedSeed.."`  |  🧱 Block: `"..getgenv().SelectedBlock.."`\n"..
-                    "✅ Plant: `"..plantedCount.."x`  |  ⛔ Skip: `"..skippedCount.."`\n"..
-                    "⛏️ Block harvest: `"..blockGained.."x`  |  🌿 Seed harvest: `"..seedGained.."x`\n"..
-                    "🔨 Break: `"..string.format("%02d:%02d", bm, bs).."`  |  Sisa: `"..blockSisa.."x`\n"..
-                    "🌱 Drop: `"..droppedThisCycle.."x`  |  Total: `"..getgenv().TotalDropAllTime.."x`"
-                )
-            end)
+            SendWebhook(
+                "📦 **[FASE 5 — DROP + RINGKASAN]** Siklus #"..getgenv().CycleCount.."\n"..
+                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                "🌱 Drop cycle ini: `"..droppedThisCycle.."x`\n"..
+                "📦 Total all time: `"..getgenv().TotalDropAllTime.."x`\n\n"..
+                "━━━━━━━━━━━━━━━━━━━━\n"..
+                "📊 **RINGKASAN**\n"..
+                "🌿 Seed: `"..getgenv().SelectedSeed.."`  |  🧱 Block: `"..getgenv().SelectedBlock.."`\n"..
+                "✅ Plant: `"..plantedCount.."x`  |  ⛔ Skip: `"..skippedCount.."`\n"..
+                "⛏️ Block harvest: `"..blockGained.."x`  |  🌿 Seed harvest: `"..seedGained.."x`\n"..
+                "🔨 Break: `"..string.format("%02d:%02d",bm,bs).."` | Sisa: `"..GetItemAmountByID(getgenv().SelectedBlock).."x`"
+            )
 
             print("[Pabrik] Siklus", getgenv().CycleCount, "selesai!")
         end)
         if not ok then warn("[Pabrik] Error:", err) end
         getgenv().PabrikIsRunning = false
-        end -- end if EnablePabrik
+        end
     end
 end)
 
@@ -933,6 +825,7 @@ local uiOk, uiErr = pcall(function()
 
     MainTab:CreateSection("Item Settings")
     local availableItems = ScanAvailableItems()
+
     local blockDropdown = MainTab:CreateDropdown({
         Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikBlockDrop",
         Callback=function(opt)
@@ -945,32 +838,26 @@ local uiOk, uiErr = pcall(function()
         Name="Select Seed", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikSeedDrop",
         Callback=function(opt)
             local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
-            if not id:find("_sapling") then id = id .. "_sapling" end
+            if not id:find("_sapling") then id = id.."_sapling" end
             getgenv().SelectedSeed = id
             Rayfield:Notify({Title="Seed", Content=id, Duration=2})
         end,
     })
+
     MainTab:CreateButton({
         Name="Refresh Item List",
         Callback=function()
             local items = ScanAvailableItems()
-            -- Coba semua method yang mungkin ada di Rayfield
-            local ok1 = pcall(function() blockDropdown:Refresh(items, items[1]) end)
-            if not ok1 then
-                local ok2 = pcall(function() blockDropdown:UpdateOptions(items) end)
-                if not ok2 then
-                    pcall(function() blockDropdown:Set(items[1]) end)
-                end
-            end
-            local ok3 = pcall(function() seedDropdown:Refresh(items, items[1]) end)
-            if not ok3 then
-                local ok4 = pcall(function() seedDropdown:UpdateOptions(items) end)
-                if not ok4 then
-                    pcall(function() seedDropdown:Set(items[1]) end)
-                end
-            end
-            Rayfield:Notify({Title="Refresh", Content=#items.." item ditemukan!", Duration=2})
-        end,
+            pcall(function()
+                if blockDropdown and blockDropdown.Refresh then blockDropdown:Refresh(items)
+                elseif blockDropdown and blockDropdown.Set then blockDropdown:Set(items[1]) end
+            end)
+            pcall(function()
+                if seedDropdown and seedDropdown.Refresh then seedDropdown:Refresh(items)
+                elseif seedDropdown and seedDropdown.Set then seedDropdown:Set(items[1]) end
+            end)
+            Rayfield:Notify({Title="Refresh", Content="Item list diperbarui!", Duration=2})
+        end
     })
 
     MainTab:CreateInput({Name="Keep Seed Amount", PlaceholderText="20", RemoveTextAfterFocusLost=false,
@@ -984,26 +871,25 @@ local uiOk, uiErr = pcall(function()
             getgenv().EnablePabrik = v
             if v then
                 getgenv().PabrikStartTime = os.time()
-                print("[Pabrik] Enable: true | Timer mulai")
                 task.spawn(function()
                     SendWebhook(
-                        "✅ **[PABRIK] Dinyalakan**\n"..
-                        "👤 `"..LP.Name.."`  |  🎮 `"..game.Name.."`\n"..
-                        "🌿 Seed: `"..(getgenv().SelectedSeed == "" and "Belum dipilih" or getgenv().SelectedSeed).."`\n"..
-                        "🧱 Block: `"..(getgenv().SelectedBlock == "" and "Belum dipilih" or getgenv().SelectedBlock).."`"
+                        "✅ **[PABRIK DINYALAKAN]**\n"..
+                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                        "🌿 Seed: `"..getgenv().SelectedSeed.."`  |  🧱 Block: `"..getgenv().SelectedBlock.."`"
                     )
                 end)
+                print("[Pabrik] Enable: true")
             else
                 getgenv().PabrikIsRunning = false
-                print("[Pabrik] Enable: false")
                 task.spawn(function()
                     SendWebhook(
-                        "🛑 **[PABRIK] Dimatikan Manual**\n"..
+                        "🛑 **[PABRIK DIMATIKAN MANUAL]**\n"..
                         "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                        "📊 Cycle selesai: `"..(getgenv().CycleCount or 0).."x`\n"..
-                        "📦 Total drop: `"..(getgenv().TotalDropAllTime or 0).."x`"
+                        "🏭 Siklus selesai: `"..getgenv().CycleCount.."`\n"..
+                        "📦 Total drop: `"..getgenv().TotalDropAllTime.."x`"
                     )
                 end)
+                print("[Pabrik] Enable: false")
             end
         end,
     })
@@ -1055,4 +941,3 @@ end)
 if not uiOk then warn("[Pabrik] UI Error: "..tostring(uiErr)) end
 
 print("[Pabrik v3] Load selesai! Heartbeat:", getgenv().RaihjnHeartbeatPabrik ~= nil)
-
