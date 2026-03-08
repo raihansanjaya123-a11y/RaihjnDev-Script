@@ -335,6 +335,39 @@ end
 -- DROP / UI HELPERS
 -- ============================================================
 
+local function CheckDropsAtGrid(gx, gy)
+    for _, fname in ipairs({"Drops","Gems"}) do
+        local folder = workspace:FindFirstChild(fname)
+        if folder then
+            for _, obj in pairs(folder:GetChildren()) do
+                local pos
+                if obj:IsA("BasePart") then pos = obj.Position
+                elseif obj:IsA("Model") then
+                    local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                    if p then pos = p.Position end
+                end
+                if pos then
+                    local dx = math.floor(pos.X / getgenv().GridSize + 0.5)
+                    local dy = math.floor(pos.Y / getgenv().GridSize + 0.5)
+                    if dx == gx and dy == gy then
+                        local isSapling = false
+                        for _, v in pairs(obj:GetAttributes()) do
+                            if type(v)=="string" and v:lower():find("sapling") then isSapling=true; break end
+                        end
+                        if not isSapling then
+                            for _, c in ipairs(obj:GetDescendants()) do
+                                if c:IsA("StringValue") and c.Value:lower():find("sapling") then isSapling=true; break end
+                            end
+                        end
+                        if not isSapling then return true end
+                    end
+                end
+            end
+        end
+    end
+    return false
+end
+
 local function GetDropRemote()
     local rem = RS:FindFirstChild("Remotes")
     if not rem then return nil end
@@ -492,10 +525,46 @@ local function DoFarmBlockLoop(breakPosX, breakPosY)
             task.wait(getgenv().BreakDelay)
         end
 
-        -- Collect drop dengan jalan ke tile langsung
-        walkToGrid(BreakTarget.X, BreakTarget.Y)
-        task.wait(0.2)
-        walkToGrid(breakPosX, breakPosY)
+        if CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) then
+            local char = LP.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            local mh   = GetMyHitbox()
+            local eCF  = hrp and hrp.CFrame
+            local eHCF = mh  and mh.CFrame
+            local ePM
+            if PlayerMovement then pcall(function() ePM = PlayerMovement.Position end) end
+
+            if hrp then hrp.Anchored=true; getgenv().HoldCFrame=eCF; getgenv().IsGhosting=true end
+            if hum then
+                local anim   = hum:FindFirstChildOfClass("Animator")
+                local tracks = anim and anim:GetPlayingAnimationTracks() or hum:GetPlayingAnimationTracks()
+                for _, t in ipairs(tracks) do t:Stop(0) end
+            end
+
+            walkToGrid(BreakTarget.X, BreakTarget.Y)
+            local t = 0
+            while CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) and t < 15 and getgenv().EnablePabrik do
+                task.wait(0.1); t = t + 1
+            end
+            task.wait(0.1)
+            walkToGrid(breakPosX, breakPosY)
+
+            if hrp and eCF then
+                hrp.AssemblyLinearVelocity  = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+                if mh and eHCF then mh.CFrame = eHCF; mh.AssemblyLinearVelocity = Vector3.zero end
+                hrp.CFrame = eCF
+                if PlayerMovement and ePM then pcall(function()
+                    PlayerMovement.Position=ePM; PlayerMovement.OldPosition=ePM
+                    PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0
+                    PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true
+                end) end
+                RunService.Heartbeat:Wait(); RunService.Heartbeat:Wait()
+                hrp.Anchored = false
+            end
+            getgenv().IsGhosting = false
+        end
     end
 end
 
@@ -865,6 +934,32 @@ local uiOk, uiErr = pcall(function()
 
     MainTab:CreateSection("Item Settings")
     local availableItems = ScanAvailableItems()
+
+    -- Scan World Drops button
+    MainTab:CreateButton({
+        Name="Scan World Drops",
+        Callback=function()
+            local drops = ScanWorldDrops()
+            if #drops == 0 then
+                Rayfield:Notify({Title="Scan World", Content="Tidak ada drop ditemukan!", Duration=3})
+                return
+            end
+            -- Print ke console lengkap
+            print("========= WORLD DROPS =========")
+            for _, d in ipairs(drops) do
+                print(string.format("[%s] %s — %dx", d.Folder, d.Id, d.Count))
+            end
+            print("================================")
+            -- Notify ringkasan top 3
+            local msg = ""
+            for i = 1, math.min(3, #drops) do
+                msg = msg .. drops[i].Id .. " x"..drops[i].Count.."\n"
+            end
+            if #drops > 3 then msg = msg .. "(+"..( #drops-3).." lainnya, cek console)" end
+            Rayfield:Notify({Title="World Drops ("..#drops.." item)", Content=msg, Duration=6})
+        end,
+    })
+
     local blockDropdown = MainTab:CreateDropdown({
         Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikBlockDrop",
         Callback=function(opt)
@@ -987,4 +1082,3 @@ end)
 if not uiOk then warn("[Pabrik] UI Error: "..tostring(uiErr)) end
 
 print("[Pabrik v3] Load selesai! Heartbeat:", getgenv().RaihjnHeartbeatPabrik ~= nil)
-
