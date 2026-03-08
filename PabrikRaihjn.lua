@@ -912,7 +912,7 @@ local uiOk, uiErr = pcall(function()
     MainTab:CreateSection("Item Settings")
     local availableItems = ScanAvailableItems()
 
-    MainTab:CreateDropdown({
+    local blockDropRef = MainTab:CreateDropdown({
         Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikBlockDrop",
         Callback=function(opt)
             local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
@@ -920,7 +920,7 @@ local uiOk, uiErr = pcall(function()
             Rayfield:Notify({Title="Block", Content=id, Duration=2})
         end,
     })
-    MainTab:CreateDropdown({
+    local seedDropRef = MainTab:CreateDropdown({
         Name="Select Seed", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikSeedDrop",
         Callback=function(opt)
             local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
@@ -929,22 +929,14 @@ local uiOk, uiErr = pcall(function()
         end,
     })
     MainTab:CreateButton({
-        Name = "Refresh Item List",
+        Name = "🔄 Refresh Item List",
         Callback = function()
             local items = ScanAvailableItems()
-            -- Gunakan Rayfield.Flags, bukan MainTab.Flags
-            local blockDropdown = Rayfield.Flags["PabrikBlockDrop"]
-            local seedDropdown = Rayfield.Flags["PabrikSeedDrop"]
-            if blockDropdown and seedDropdown then
-                pcall(function()
-                    -- Metode UpdateOptions atau SetOptions (tergantung versi Rayfield)
-                    blockDropdown:UpdateOptions(items)
-                    seedDropdown:UpdateOptions(items)
-                end)
-            else
-                warn("Dropdown tidak ditemukan!")
-            end
-            Rayfield:Notify({Title="Refresh", Content="Item list diperbarui!", Duration=2})
+            local ok1 = pcall(function() blockDropRef:Refresh(items) end)
+            if not ok1 then pcall(function() blockDropRef:UpdateOptions(items) end) end
+            local ok2 = pcall(function() seedDropRef:Refresh(items) end)
+            if not ok2 then pcall(function() seedDropRef:UpdateOptions(items) end) end
+            Rayfield:Notify({Title="Refresh", Content=#items.." item ditemukan!", Duration=2})
         end
     })
 
