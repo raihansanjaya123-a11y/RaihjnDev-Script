@@ -174,88 +174,104 @@ MiscTab:CreateButton({
 })
 
 -- ============================================================
--- UI: WORLD SCAN (Real-time DescendantAdded detector)
+-- UI: WORLD SCAN (Polling — detect object yang sudah ada di workspace)
 -- ============================================================
 
--- Simpan semua drop yang kedetect
-local detectedDrops = {}
-local dropListener  = nil
-local scanActive    = false
+local detectedDrops  = {}
+local scanLoopThread = nil
+local scanActive     = false
 
 local function GetItemId(obj)
-    -- Cek attribute
-    for _, key in ipairs({"Id","ID","ItemId","item_id","Type","ItemName"}) do
+    for _, key in ipairs({"Id","ID","ItemId","item_id","Type","ItemName","ItemType"}) do
         local v = obj:GetAttribute(key)
         if v and tostring(v) ~= "" then return tostring(v) end
     end
-    -- Cek StringValue anak langsung
     for _, c in ipairs(obj:GetChildren()) do
-        if c:IsA("StringValue") and c.Value ~= "" then
-            return c.Value
+        if c:IsA("StringValue") and c.Value ~= "" then return c.Value end
+        if c:IsA("IntValue") or c:IsA("NumberValue") then
+            -- Kemungkinan amount
         end
     end
     return nil
 end
 
-local function IsLikelyDrop(obj)
-    -- Harus BasePart atau Model
-    if not (obj:IsA("BasePart") or obj:IsA("Model") or obj:IsA("MeshPart")) then
-        return false
+local function GetAmount(obj)
+    for _, key in ipairs({"Amount","Amt","Count","Stack","Quantity"}) do
+        local v = obj:GetAttribute(key)
+        if v then return tonumber(v) or 1 end
     end
-    -- Skip object game yang pasti bukan drop
-    local skipNames = {
-        "Baseplate","SpawnLocation","Terrain","Camera",
-        "HumanoidRootPart","Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"
-    }
-    for _, n in ipairs(skipNames) do
-        if obj.Name == n then return false end
-    end
-    -- Harus punya attribute item ATAU parent-nya folder drop
-    local hasAttr = GetItemId(obj) ~= nil
-    local parentIsDropFolder = false
-    if obj.Parent then
-        local pname = obj.Parent.Name:lower()
-        for _, keyword in ipairs({"drop","gem","item","pickup","collect","loot"}) do
-            if pname:find(keyword) then parentIsDropFolder = true; break end
+    -- Cek BillboardGui dengan angka (seperti yang keliatan di screenshot)
+    for _, c in ipairs(obj:GetDescendants()) do
+        if c:IsA("TextLabel") and tonumber(c.Text) then
+            return tonumber(c.Text)
         end
     end
-    return hasAttr or parentIsDropFolder
+    return 1
 end
 
-local function StartDropDetector()
-    if dropListener then return end
-    detectedDrops = {}
-    scanActive = true
-    print("[WorldScan] Detector aktif, memantau workspace...")
+local skipClasses = {
+    Terrain=true, Camera=true, Script=true, LocalScript=true,
+    ModuleScript=true, Sky=true, Atmosphere=true, Lighting=true,
+}
+local skipNames = {
+    Baseplate=true, SpawnLocation=true, HumanoidRootPart=true,
+    Head=true, Torso=true, LeftArm=true, RightArm=true,
+    LeftLeg=true, RightLeg=true, ["Left Arm"]=true, ["Right Arm"]=true,
+    ["Left Leg"]=true, ["Right Leg"]=true,
+}
 
-    dropListener = workspace.DescendantAdded:Connect(function(obj)
-        if not scanActive then return end
-        task.wait(0.1) -- tunggu attribute ter-load
-
-        if not IsLikelyDrop(obj) then return end
-
-        local id = GetItemId(obj) or obj.Name
-        local parent = obj.Parent and obj.Parent.Name or "workspace"
-
-        -- Catat ke detected list
-        if not detectedDrops[id] then
-            detectedDrops[id] = {Id=id, Count=0, Parent=parent, LastObj=obj}
+local function ScanAll()
+    local found = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if skipClasses[obj.ClassName] then continue end
+        if skipNames[obj.Name] then continue end
+        -- Skip kalau parent adalah karakter player
+        local parentIsChar = false
+        for _, p in pairs(Players:GetPlayers()) do
+            if p.Character and obj:IsDescendantOf(p.Character) then
+                parentIsChar = true; break
+            end
         end
-        detectedDrops[id].Count = detectedDrops[id].Count + 1
-        detectedDrops[id].LastObj = obj
+        if parentIsChar then continue end
 
-        print(string.format("[WorldScan] DROP DETECTED: %s ×%d (parent: %s)",
-            id, detectedDrops[id].Count, parent))
+        local id = GetItemId(obj)
+        if id then
+            local amt = GetAmount(obj)
+            local parent = obj.Parent and obj.Parent.Name or "workspace"
+            if not found[id] then
+                found[id] = {Id=id, Count=0, Parent=parent}
+            end
+            found[id].Count = found[id].Count + amt
+        end
+    end
+    return found
+end
+
+local function StartScan()
+    if scanLoopThread then return end
+    scanActive = true
+    detectedDrops = {}
+    print("[WorldScan] Polling aktif...")
+
+    scanLoopThread = task.spawn(function()
+        while scanActive do
+            local result = ScanAll()
+            -- Merge ke detectedDrops
+            for id, data in pairs(result) do
+                detectedDrops[id] = data
+            end
+            task.wait(2) -- scan tiap 2 detik
+        end
     end)
 end
 
-local function StopDropDetector()
+local function StopScan()
     scanActive = false
-    if dropListener then
-        dropListener:Disconnect()
-        dropListener = nil
+    if scanLoopThread then
+        pcall(function() task.cancel(scanLoopThread) end)
+        scanLoopThread = nil
     end
-    print("[WorldScan] Detector dimatikan.")
+    print("[WorldScan] Polling dimatikan.")
 end
 
 local function GetDetectedList()
@@ -275,10 +291,10 @@ MiscTab:CreateToggle({
     Flag="WorldScanToggle",
     Callback=function(v)
         if v then
-            StartDropDetector()
-            Rayfield:Notify({Title="World Scan", Content="Detector aktif! Drop akan ter-log di console.", Duration=4})
+            StartScan()
+            Rayfield:Notify({Title="World Scan", Content="Polling aktif! Scan tiap 2 detik.", Duration=4})
         else
-            StopDropDetector()
+            StopScan()
             Rayfield:Notify({Title="World Scan", Content="Detector dimatikan.", Duration=3})
         end
     end,
@@ -303,7 +319,7 @@ MiscTab:CreateButton({
             msg = msg..list[i].Id.." ×"..list[i].Count.."\n"
         end
         if #list > 5 then msg = msg.."(+"..( #list-5).." lainnya — cek console)" end
-        Rayfield:Notify({Title="Detected Drops ("..#list..")", Content=msg, Duration=8})
+        Rayfield:Notify({Title="Detected ("..#list.." item)", Content=msg, Duration=8})
     end,
 })
 
@@ -326,7 +342,7 @@ MiscTab:CreateButton({
             Rayfield:Notify({Title="World Scan", Content="Belum ada drop terdeteksi!", Duration=3}); return
         end
         task.spawn(function()
-            local msg = "🌍 **WORLD DROP DETECTOR**\n"..
+            local msg = "🌍 **WORLD DROP SCAN**\n"..
                         "👤 `"..LP.Name.."`  |  🎮 `"..game.Name.."`\n\n"
             for i, d in ipairs(list) do
                 msg = msg.."[`"..d.Parent.."`] `"..d.Id.."` — **"..d.Count.."x**\n"
