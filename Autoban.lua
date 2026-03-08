@@ -115,34 +115,46 @@ MiscTab:CreateSection("Auto Ban")
 MiscTab:CreateButton({
     Name="🔧 Debug — Cek Drop Objects",
     Callback=function()
-        print("========= SCAN BILLBOARD =========")
-        local count = 0
+        print("========= KEYWORD SCAN =========")
+        local keywords = {"wooden","frame","gem","seed","drop","item",
+            "sapling","fruit","harvest","crop","loot","pickup","ore","log","stone"}
+        local found = 0
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BillboardGui") then
-                print("[Billboard]", obj:GetFullName())
-                print("  ParentName:", obj.Parent and obj.Parent.Name or "?")
-                print("  ParentClass:", obj.Parent and obj.Parent.ClassName or "?")
-                for k, v in pairs((obj.Parent or obj):GetAttributes()) do
-                    print("  Attr:", k, "=", tostring(v))
-                end
-                for _, c in ipairs(obj:GetDescendants()) do
-                    if c:IsA("TextLabel") then
-                        print("  Text:", c.Text)
+            local nameLow = obj.Name:lower()
+            local matched = false
+            for _, kw in ipairs(keywords) do
+                if nameLow:find(kw) then matched=true; break end
+            end
+            if not matched then
+                for k, v in pairs(obj:GetAttributes()) do
+                    local kl = tostring(k):lower()
+                    local vl = tostring(v):lower()
+                    for _, kw in ipairs(keywords) do
+                        if kl:find(kw) or vl:find(kw) then matched=true; break end
                     end
+                    if matched then break end
                 end
-                count = count + 1
-                if count >= 10 then print("...stop di 10"); break end
+            end
+            if matched then
+                print(string.format("[%d] %s | Class=%s | Parent=%s",
+                    found, obj.Name, obj.ClassName,
+                    obj.Parent and obj.Parent.Name or "?"))
+                for k,v in pairs(obj:GetAttributes()) do
+                    print("  attr:", k, "=", tostring(v))
+                end
+                found = found + 1
+                if found >= 20 then print("...stop di 20"); break end
             end
         end
-        if count == 0 then
-            print("Tidak ada BillboardGui!")
-            print("--- workspace children ---")
+        if found == 0 then
+            print("Tidak ada! Semua workspace children:")
             for _, obj in ipairs(workspace:GetChildren()) do
-                print(obj.Name, obj.ClassName)
+                print(" -", obj.Name, obj.ClassName)
             end
         end
-        print("==================================")
-        Rayfield:Notify({Title="Debug", Content="Cek console! ("..count.." billboard)", Duration=4})
+        print("Total found:", found)
+        print("================================")
+        Rayfield:Notify({Title="Debug", Content=found.." object ditemukan!", Duration=4})
     end,
 })
 
