@@ -336,30 +336,37 @@ end
 -- ============================================================
 
 local function CheckDropsAtGrid(gx, gy)
-    for _, fname in ipairs({"Drops","Gems"}) do
-        local folder = workspace:FindFirstChild(fname)
-        if folder then
-            for _, obj in pairs(folder:GetChildren()) do
-                local pos
-                if obj:IsA("BasePart") then pos = obj.Position
-                elseif obj:IsA("Model") then
-                    local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                    if p then pos = p.Position end
-                end
-                if pos then
-                    local dx = math.floor(pos.X / getgenv().GridSize + 0.5)
-                    local dy = math.floor(pos.Y / getgenv().GridSize + 0.5)
-                    if dx == gx and dy == gy then
-                        local isSapling = false
-                        for _, v in pairs(obj:GetAttributes()) do
-                            if type(v)=="string" and v:lower():find("sapling") then isSapling=true; break end
-                        end
-                        if not isSapling then
-                            for _, c in ipairs(obj:GetDescendants()) do
-                                if c:IsA("StringValue") and c.Value:lower():find("sapling") then isSapling=true; break end
-                            end
-                        end
-                        if not isSapling then return true end
+    -- Cek apakah ada seed yang dipilih di-drop di tile ini
+    local seedID = getgenv().SelectedSeed
+    if not seedID or seedID == "" then return false end
+    seedID = seedID:lower()
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        -- Skip karakter player
+        local isChar = false
+        for _, p in pairs(Players:GetPlayers()) do
+            if p.Character and obj:IsDescendantOf(p.Character) then isChar=true; break end
+        end
+        if not isChar then
+            -- Cek posisi object
+            local pos
+            if obj:IsA("BasePart") then pos = obj.Position
+            elseif obj:IsA("Model") then
+                local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                if p then pos = p.Position end
+            end
+            if pos then
+                local dx = math.floor(pos.X / getgenv().GridSize + 0.5)
+                local dy = math.floor(pos.Y / getgenv().GridSize + 0.5)
+                if dx == gx and dy == gy then
+                    -- Cek apakah object ini adalah seed yang dipilih
+                    local objName = obj.Name:lower()
+                    if objName:find(seedID) or seedID:find(objName) then
+                        return true
+                    end
+                    -- Cek attribute
+                    for _, v in pairs(obj:GetAttributes()) do
+                        if type(v)=="string" and v:lower():find(seedID) then return true end
                     end
                 end
             end
