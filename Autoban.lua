@@ -147,7 +147,44 @@ MiscTab:CreateSection("Auto Ban")
 
 -- DEBUG: cek remote dulu
 MiscTab:CreateButton({
-    Name="🔧 Debug — Cek Remotes",
+    Name="🔧 Debug — Cek Drop Objects",
+    Callback=function()
+        print("========= SCAN BILLBOARD/DROP =========")
+        local count = 0
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            -- Cari object yang punya BillboardGui (item drop punya angka di atasnya)
+            if obj:IsA("BillboardGui") then
+                print("[BillboardGui]", obj:GetFullName(), "| Parent:", obj.Parent and obj.Parent.ClassName or "?")
+                -- Print semua text di dalamnya
+                for _, c in ipairs(obj:GetDescendants()) do
+                    if c:IsA("TextLabel") then
+                        print("  TextLabel:", c.Text)
+                    end
+                end
+                -- Print attribute parent
+                if obj.Parent then
+                    for k, v in pairs(obj.Parent:GetAttributes()) do
+                        print("  Attr:", k, "=", v)
+                    end
+                    print("  ParentName:", obj.Parent.Name)
+                    print("  ParentClass:", obj.Parent.ClassName)
+                end
+                count = count + 1
+                if count >= 10 then print("... (lebih dari 10, stop)"); break end
+            end
+        end
+        if count == 0 then
+            print("Tidak ada BillboardGui ditemukan!")
+            -- Fallback: print semua children workspace
+            print("--- workspace children ---")
+            for _, obj in ipairs(workspace:GetChildren()) do
+                print(obj.Name, obj.ClassName)
+            end
+        end
+        print("=======================================")
+        Rayfield:Notify({Title="Debug Drop", Content="Cek console! ("..count.." billboard)", Duration=4})
+    end,
+})
     Callback=function()
         print("========= REMOTES =========")
         -- Cek RS.Remotes
