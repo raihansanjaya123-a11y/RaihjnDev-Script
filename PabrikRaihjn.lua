@@ -514,41 +514,41 @@ end
 -- HELPER: Farm Block loop (dipakai 2x, di awal dan fase 4)
 -- TIDAK DIUBAH
 -- ============================================================
-local function CheckDropsAtGrid(gx, gy)
-    for _, fname in ipairs({"Drops","Gems"}) do
-        local folder = workspace:FindFirstChild(fname)
+local function CheckDropsAtGrid(TargetGridX, TargetGridY)
+    local TargetFolders = { workspace:FindFirstChild("Drops"), workspace:FindFirstChild("Gems") }
+    for _, folder in ipairs(TargetFolders) do
         if folder then
             for _, obj in pairs(folder:GetChildren()) do
-                local pos
-                if obj:IsA("BasePart") then
-                    pos = obj.Position
+                local pos = nil
+                if obj:IsA("BasePart") then pos = obj.Position
+                elseif obj:IsA("Model") and obj.PrimaryPart then pos = obj.PrimaryPart.Position
                 elseif obj:IsA("Model") then
-                    local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                    if p then pos = p.Position end
+                    local firstPart = obj:FindFirstChildWhichIsA("BasePart")
+                    if firstPart then pos = firstPart.Position end
                 end
+                
                 if pos then
-                    local dx = math.floor(pos.X / getgenv().GridSize + 0.5)
-                    local dy = math.floor(pos.Y / getgenv().GridSize + 0.5)
-                    if dx == gx and dy == gy then
-                        -- Cek apakah ini sapling
+                    local dX = math.floor(pos.X / getgenv().GridSize + 0.5)
+                    local dY = math.floor(pos.Y / getgenv().GridSize + 0.5)
+                    
+                    if dX == TargetGridX and dY == TargetGridY then
+                        -- Cek apakah drop ini adalah Sapling
                         local isSapling = false
-                        for _, v in pairs(obj:GetAttributes()) do
-                            if type(v)=="string" and v:lower():find("sapling") then
-                                isSapling = true
-                                break
-                            end
+                        for _, attrValue in pairs(obj:GetAttributes()) do
+                            if type(attrValue) == "string" and string.find(string.lower(attrValue), "sapling") then isSapling = true; break end
                         end
                         if not isSapling then
-                            for _, c in ipairs(obj:GetDescendants()) do
-                                if c:IsA("StringValue") and c.Value:lower():find("sapling") then
-                                    isSapling = true
-                                    break
+                            for _, child in ipairs(obj:GetDescendants()) do
+                                if child:IsA("StringValue") and string.find(string.lower(child.Value), "sapling") then isSapling = true; break end
+                                for _, attrValue in pairs(child:GetAttributes()) do
+                                    if type(attrValue) == "string" and string.find(string.lower(attrValue), "sapling") then isSapling = true; break end
                                 end
+                                if isSapling then break end
                             end
                         end
-                        if isSapling then
-                            return true
-                        end
+                        
+                        -- Cuma me-return True kalau dia beneran Sapling
+                        if isSapling then return true end
                     end
                 end
             end
@@ -556,7 +556,6 @@ local function CheckDropsAtGrid(gx, gy)
     end
     return false
 end
-
 -- ============================================================
 -- HELPER: Drop seed loop
 -- ============================================================
@@ -902,3 +901,4 @@ if not uiOk then
 end
 
 print("[Pabrik v3] Load selesai! Heartbeat:", getgenv().RaihjnHeartbeatPabrik ~= nil)
+
