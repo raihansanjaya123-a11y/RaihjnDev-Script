@@ -152,6 +152,36 @@ MiscTab:CreateButton({
                 print(" -", obj.Name, obj.ClassName)
             end
         end
+        -- Extra: print isi folder Gems secara langsung
+        print("--- Folder Gems ---")
+        local gemsFolder = workspace:FindFirstChild("Gems")
+        if gemsFolder then
+            print("Gems children count:", #gemsFolder:GetChildren())
+            for i, obj in ipairs(gemsFolder:GetChildren()) do
+                print(string.format("  [%d] Name=%s Class=%s", i, obj.Name, obj.ClassName))
+                for k,v in pairs(obj:GetAttributes()) do
+                    print("    attr:", k, "=", tostring(v))
+                end
+                for _, c in ipairs(obj:GetChildren()) do
+                    print("    child:", c.Name, c.ClassName)
+                    for k2,v2 in pairs(c:GetAttributes()) do
+                        print("      attr:", k2, "=", tostring(v2))
+                    end
+                    if c:IsA("StringValue") or c:IsA("IntValue") or c:IsA("NumberValue") then
+                        print("      value:", c.Value)
+                    end
+                end
+                if i >= 3 then print("  ...stop di 3"); break end
+            end
+        else
+            print("Folder Gems tidak ada!")
+            -- Coba cari folder lain
+            for _, obj in ipairs(workspace:GetChildren()) do
+                if obj:IsA("Folder") or obj:IsA("Model") then
+                    print("Folder/Model:", obj.Name, "#children:", #obj:GetChildren())
+                end
+            end
+        end
         print("Total found:", found)
         print("================================")
         Rayfield:Notify({Title="Debug", Content=found.." object ditemukan!", Duration=4})
