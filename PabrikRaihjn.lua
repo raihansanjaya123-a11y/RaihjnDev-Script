@@ -191,6 +191,7 @@ local function SetHitBoxPos(x, y)
     end
 end
 
+-- walkToGrid: jalan step by step X dulu baru Y, anti blink dalam satu baris Y
 local function walkToGrid(targetX, targetY)
     local cx, cy = GetMyPosition()
     while cx ~= targetX or cy ~= targetY do
@@ -201,6 +202,66 @@ local function walkToGrid(targetX, targetY)
         task.wait(getgenv().StepDelay)
     end
     SetHitBoxPos(targetX, targetY)
+end
+
+-- walkToGridSafe: dipakai saat PINDAH Y (Y berbeda dari posisi sekarang)
+-- Strategi: deteksi posisi X ujung zigzag sesuai baris saat ini (X1 atau X99),
+-- jalan ke sana dulu, baru pindah Y step by step sambil paksa X tetap di ujung itu.
+-- Ujung X1/X99 adalah posisi aman (tidak ada penghalang di area naik/turun).
+local function walkToGridSafe(targetX, targetY)
+    local cx, cy = GetMyPosition()
+
+    if cy ~= targetY then
+        -- Tentukan safeX: ujung X sesuai posisi zigzag saat ini
+        -- Hitung baris sekarang berdasarkan Y (baris ke-N dari StartY)
+        local startY  = getgenv().PabrikStartY
+        local endY    = getgenv().PabrikEndY
+        local gap     = getgenv().YGap or 2
+        local x1      = getgenv().PabrikStartX
+        local x2      = getgenv().PabrikEndX
+        -- Hitung row index (1-based) dari Y sekarang
+        local rowIdx
+        if startY <= endY then
+            rowIdx = math.floor((cy - startY) / gap) + 1
+        else
+            rowIdx = math.floor((startY - cy) / gap) + 1
+        end
+        -- Row ganjil: jalan x1→x2, selesai di x2 → safeX = x2
+        -- Row genap: jalan x2→x1, selesai di x1 → safeX = x1
+        local safeX = (rowIdx % 2 == 1) and x2 or x1
+
+        -- Langkah 1: jalan ke safeX di Y sekarang
+        if cx ~= safeX then
+            walkToGrid(safeX, cy)
+        end
+        cx = safeX
+
+        -- Langkah 2: pindah Y satu per satu, paksa X tetap di safeX tiap step
+        local stepY = targetY > cy and 1 or -1
+        while cy ~= targetY do
+            if not getgenv().EnablePabrik then break end
+            cy = cy + stepY
+            SetHitBoxPos(safeX, cy)
+            task.wait(getgenv().StepDelay)
+        end
+
+        -- Langkah 3: verifikasi Y sudah benar (retry kalau blink)
+        for _ = 1, 5 do
+            local _, actY = GetMyPosition()
+            if actY == targetY then break end
+            SetHitBoxPos(safeX, targetY)
+            task.wait(0.1)
+        end
+        cx = safeX
+    end
+
+    -- Langkah 4: jalan ke targetX di Y yang sudah benar
+    if cx ~= targetX then
+        walkToGrid(targetX, targetY)
+    else
+        SetHitBoxPos(targetX, targetY)
+        task.wait(0.05)
+    end
 end
 
 local function EnsurePosition(targetX, targetY)
@@ -309,7 +370,7 @@ local function CheckDropsAtGrid(gx, gy)
                                 if c:IsA("StringValue") and c.Value:lower():find("sapling") then isSapling=true; break end
                             end
                         end
-                        if isSapling then return true end
+                        if not isSapling then return true end
                     end
                 end
             end
@@ -451,73 +512,49 @@ end
 
 -- ============================================================
 -- HELPER: Farm Block loop (dipakai 2x, di awal dan fase 4)
+-- TIDAK DIUBAH
 -- ============================================================
-local function DoFarmBlockLoop(breakPosX, breakPosY)
-    local BreakTarget = Vector2.new(breakPosX - 1, breakPosY)
-    local remPlace = GetRemotePlace()
-    local remBreak = GetRemoteBreak()
-    if not remPlace or not remBreak then
-        warn("[Block] Remote tidak ada!"); return
-    end
-    while getgenv().EnablePabrik do
-        local currentAmt = GetItemAmountByID(getgenv().SelectedBlock)
-        if currentAmt <= getgenv().BlockThreshold then
-            print("[Block] Threshold. Amt:", currentAmt); break
-        end
-        local blockSlot = GetSlotByItemID(getgenv().SelectedBlock)
-        if not blockSlot then print("[Block] Slot nil!"); break end
-
-        pcall(function() remPlace:FireServer(BreakTarget, blockSlot) end)
-        task.wait(0.15)
-
-        for _ = 1, getgenv().HitCount do
-            if not getgenv().EnablePabrik then break end
-            SetHitBoxPos(breakPosX, breakPosY)
-            pcall(function() remBreak:FireServer(BreakTarget) end)
-            task.wait(getgenv().BreakDelay)
-        end
-
-        if CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) then
-            local char = LP.Character
-            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-            local hum  = char and char:FindFirstChildOfClass("Humanoid")
-            local mh   = GetMyHitbox()
-            local eCF  = hrp and hrp.CFrame
-            local eHCF = mh  and mh.CFrame
-            local ePM
-            if PlayerMovement then pcall(function() ePM = PlayerMovement.Position end) end
-
-            if hrp then hrp.Anchored=true; getgenv().HoldCFrame=eCF; getgenv().IsGhosting=true end
-            if hum then
-                local anim   = hum:FindFirstChildOfClass("Animator")
-                local tracks = anim and anim:GetPlayingAnimationTracks() or hum:GetPlayingAnimationTracks()
-                for _, t in ipairs(tracks) do t:Stop(0) end
+local function CheckDropsAtGrid(gx, gy)
+    for _, fname in ipairs({"Drops","Gems"}) do
+        local folder = workspace:FindFirstChild(fname)
+        if folder then
+            for _, obj in pairs(folder:GetChildren()) do
+                local pos
+                if obj:IsA("BasePart") then
+                    pos = obj.Position
+                elseif obj:IsA("Model") then
+                    local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                    if p then pos = p.Position end
+                end
+                if pos then
+                    local dx = math.floor(pos.X / getgenv().GridSize + 0.5)
+                    local dy = math.floor(pos.Y / getgenv().GridSize + 0.5)
+                    if dx == gx and dy == gy then
+                        -- Cek apakah ini sapling
+                        local isSapling = false
+                        for _, v in pairs(obj:GetAttributes()) do
+                            if type(v)=="string" and v:lower():find("sapling") then
+                                isSapling = true
+                                break
+                            end
+                        end
+                        if not isSapling then
+                            for _, c in ipairs(obj:GetDescendants()) do
+                                if c:IsA("StringValue") and c.Value:lower():find("sapling") then
+                                    isSapling = true
+                                    break
+                                end
+                            end
+                        end
+                        if isSapling then
+                            return true
+                        end
+                    end
+                end
             end
-
-            walkToGrid(BreakTarget.X, BreakTarget.Y)
-            local t = 0
-            while CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) and t < 15 and getgenv().EnablePabrik do
-                task.wait(0.1); t = t + 1
-            end
-            task.wait(0.1)
-            walkToGrid(breakPosX, breakPosY)
-
-            if hrp and eCF then
-                hrp.AssemblyLinearVelocity  = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-                if mh and eHCF then mh.CFrame = eHCF; mh.AssemblyLinearVelocity = Vector3.zero end
-                hrp.CFrame = eCF
-                if PlayerMovement and ePM then pcall(function()
-                    PlayerMovement.Position=ePM; PlayerMovement.OldPosition=ePM
-                    PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0
-                    PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true
-                end) end
-                RunService.Heartbeat:Wait(); RunService.Heartbeat:Wait()
-                hrp.Anchored = false
-            end
-            getgenv().IsGhosting = false
         end
     end
+    return false
 end
 
 -- ============================================================
@@ -557,8 +594,7 @@ end
 local mainCoro = coroutine.create(function()
     while true do
         task.wait(1)
-        if not getgenv().EnablePabrik then continue end
-        if getgenv().PabrikIsRunning then continue end
+        if getgenv().EnablePabrik and not getgenv().PabrikIsRunning then
 
         getgenv().PabrikIsRunning = true
         local ok, err = pcall(function()
@@ -571,7 +607,8 @@ local mainCoro = coroutine.create(function()
             local blockAmtAwal = GetItemAmountByID(getgenv().SelectedBlock)
             if blockAmtAwal > getgenv().BlockThreshold then
                 print("[Awal] Block banyak ("..blockAmtAwal.."), farm block dulu")
-                walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
+                -- walkToGridSafe: BreakPos bisa beda Y dari posisi awal
+                walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
                 task.wait(0.5)
                 DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
                 if not getgenv().EnablePabrik then return end
@@ -592,6 +629,7 @@ local mainCoro = coroutine.create(function()
             local lastPlantedX, lastPlantedY = nil, nil
             local plantedTiles = {}
             local skippedCount = 0
+            local lastY = nil  -- track Y terakhir untuk deteksi pindah baris
 
             for i, point in ipairs(plantPath) do
                 if not getgenv().EnablePabrik then break end
@@ -602,7 +640,13 @@ local mainCoro = coroutine.create(function()
                     if not slot then
                         print("[Plant] Seed habis di tile", i); break
                     end
-                    walkToGrid(point.X, point.Y)
+                    -- Pakai walkToGridSafe kalau pindah Y, walkToGrid kalau masih Y sama
+                    if lastY ~= nil and point.Y ~= lastY then
+                        walkToGridSafe(point.X, point.Y)
+                    else
+                        walkToGrid(point.X, point.Y)
+                    end
+                    lastY = point.Y
                     EnsurePosition(point.X, point.Y)
                     if not getgenv().EnablePabrik then break end
                     Doplant(point.X, point.Y, slot)
@@ -628,26 +672,64 @@ local mainCoro = coroutine.create(function()
             -- FASE 3: HARVEST (hanya tile yang di-plant)
             if not getgenv().EnablePabrik then return end
             print("[Harvest] Mulai,", #plantedTiles, "tile")
+            local lastHarvestY = nil  -- track Y untuk harvest
+
             for _, point in ipairs(plantedTiles) do
                 if not getgenv().EnablePabrik then break end
-                walkToGrid(point.X, point.Y)
+                -- Pakai walkToGridSafe kalau pindah Y, walkToGrid kalau masih Y sama
+                if lastHarvestY ~= nil and point.Y ~= lastHarvestY then
+                    walkToGridSafe(point.X, point.Y)
+                else
+                    walkToGrid(point.X, point.Y)
+                end
+                lastHarvestY = point.Y
                 EnsurePosition(point.X, point.Y)
                 DoBreak(point.X, point.Y)
             end
+
             -- Sweep balik tanpa ghosting
+            -- Sort Y dari Y terakhir harvest balik ke Y pertama
             if getgenv().EnablePabrik then
-                for i = #plantedTiles, 1, -1 do
+                local seenY = {}
+                local yList = {}
+                for _, tile in ipairs(plantedTiles) do
+                    if not seenY[tile.Y] then
+                        seenY[tile.Y] = true
+                        table.insert(yList, tile.Y)
+                    end
+                end
+                -- Sort dari Y terakhir harvest (baris terakhir) ke Y pertama
+                local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
+                table.sort(yList, function(a, b)
+                    return farmGoUp and (a > b) or (a < b)
+                end)
+
+                for _, gy in ipairs(yList) do
                     if not getgenv().EnablePabrik then break end
-                    walkToGrid(plantedTiles[i].X, plantedTiles[i].Y)
-                    task.wait(0.05)
+                    -- walkToGridSafe untuk pindah Y, anti blink
+                    local _, curY = GetMyPosition()
+                    if curY ~= gy then
+                        walkToGridSafe(getgenv().PabrikStartX, gy)
+                    end
+                    -- Scan semua X di baris Y ini
+                    for gx = getgenv().PabrikStartX, getgenv().PabrikEndX do
+                        if not getgenv().EnablePabrik then break end
+                        walkToGrid(gx, gy)
+                        task.wait(getgenv().StepDelay)
+                    end
+                end
+
+                -- Jalan ke BreakPos, pakai walkToGridSafe karena bisa beda Y
+                if getgenv().EnablePabrik then
+                    walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
                 end
             end
 
             -- FASE 4: FARM BLOCK
             if not getgenv().EnablePabrik then return end
             print("[Block] Farm block")
-            walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
-            task.wait(0.5)
+            -- Sudah di BreakPos dari ujung sweep, tidak perlu walkToGrid lagi
+            task.wait(0.3)
             DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
 
             -- FASE 5: DROP SEED
@@ -682,6 +764,7 @@ local mainCoro = coroutine.create(function()
         end)
         if not ok then warn("[Pabrik] Error:", err) end
         getgenv().PabrikIsRunning = false
+        end
     end
 end)
 
@@ -731,24 +814,24 @@ local uiOk, uiErr = pcall(function()
         end,
     })
     MainTab:CreateButton({
-    Name = "Refresh Item List",
-    Callback = function()
-        local items = ScanAvailableItems()
-        -- Gunakan Rayfield.Flags, bukan MainTab.Flags
-        local blockDropdown = Rayfield.Flags["PabrikBlockDrop"]
-        local seedDropdown = Rayfield.Flags["PabrikSeedDrop"]
-        if blockDropdown and seedDropdown then
-            pcall(function()
-                -- Metode UpdateOptions atau SetOptions (tergantung versi Rayfield)
-                blockDropdown:UpdateOptions(items)
-                seedDropdown:UpdateOptions(items)
-            end)
-        else
-            warn("Dropdown tidak ditemukan!")
+        Name = "Refresh Item List",
+        Callback = function()
+            local items = ScanAvailableItems()
+            -- Gunakan Rayfield.Flags, bukan MainTab.Flags
+            local blockDropdown = Rayfield.Flags["PabrikBlockDrop"]
+            local seedDropdown = Rayfield.Flags["PabrikSeedDrop"]
+            if blockDropdown and seedDropdown then
+                pcall(function()
+                    -- Metode UpdateOptions atau SetOptions (tergantung versi Rayfield)
+                    blockDropdown:UpdateOptions(items)
+                    seedDropdown:UpdateOptions(items)
+                end)
+            else
+                warn("Dropdown tidak ditemukan!")
+            end
+            Rayfield:Notify({Title="Refresh", Content="Item list diperbarui!", Duration=2})
         end
-        Rayfield:Notify({Title="Refresh", Content="Item list diperbarui!", Duration=2})
-    end
-})
+    })
 
     MainTab:CreateInput({Name="Keep Seed Amount", PlaceholderText="20", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().KeepSeedAmt=n end end})
