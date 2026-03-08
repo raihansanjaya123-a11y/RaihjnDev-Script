@@ -334,33 +334,52 @@ end
 -- ============================================================
 -- DROP / UI HELPERS
 -- ============================================================
+
+-- Object permanen yang pasti bukan drop
+local PERM_NAMES = {
+    Baseplate=true, SpawnLocation=true, Terrain=true, Camera=true,
+    HumanoidRootPart=true, Head=true, Torso=true,
+    ["Left Arm"]=true, ["Right Arm"]=true, ["Left Leg"]=true, ["Right Leg"]=true,
+}
+local PERM_CLASS = {
+    Terrain=true, Camera=true, Script=true, LocalScript=true,
+    ModuleScript=true, Humanoid=true, Animator=true,
+}
+
+local function GetObjPos(obj)
+    if obj:IsA("BasePart") then return obj.Position end
+    if obj:IsA("Model") then
+        local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+        if p then return p.Position end
+    end
+    return nil
+end
+
+local function IsPermObject(obj)
+    if PERM_NAMES[obj.Name] then return true end
+    if PERM_CLASS[obj.ClassName] then return true end
+    -- Skip kalau bagian dari karakter player
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Character and obj:IsDescendantOf(p.Character) then return true end
+    end
+    -- Skip kalau bagian dari hitbox
+    local hitbox = workspace:FindFirstChild("Hitbox")
+    if hitbox and obj:IsDescendantOf(hitbox) then return true end
+    return false
+end
+
 local function CheckDropsAtGrid(gx, gy)
-    for _, fname in ipairs({"Drops","Gems"}) do
-        local folder = workspace:FindFirstChild(fname)
-        if folder then
-            for _, obj in pairs(folder:GetChildren()) do
-                local pos
-                if obj:IsA("BasePart") then pos = obj.Position
-                elseif obj:IsA("Model") then
-                    local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                    if p then pos = p.Position end
-                end
-                if pos then
-                    local dx = math.floor(pos.X / getgenv().GridSize + 0.5)
-                    local dy = math.floor(pos.Y / getgenv().GridSize + 0.5)
-                    if dx == gx and dy == gy then
-                        local isSapling = false
-                        for _, v in pairs(obj:GetAttributes()) do
-                            if type(v)=="string" and v:lower():find("sapling") then isSapling=true; break end
-                        end
-                        if not isSapling then
-                            for _, c in ipairs(obj:GetDescendants()) do
-                                if c:IsA("StringValue") and c.Value:lower():find("sapling") then isSapling=true; break end
-                            end
-                        end
-                        if isSapling then return true end
-                    end
-                end
+    local gs = getgenv().GridSize
+    -- Scan semua descendants workspace cari object di posisi grid ini
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if IsPermObject(obj) then continue end
+        local pos = GetObjPos(obj)
+        if pos then
+            local dx = math.floor(pos.X / gs + 0.5)
+            local dy = math.floor(pos.Y / gs + 0.5)
+            if dx == gx and dy == gy then
+                -- Ada object di tile ini — kemungkinan drop
+                return true
             end
         end
     end
@@ -942,6 +961,32 @@ local uiOk, uiErr = pcall(function()
 
     MainTab:CreateSection("Item Settings")
     local availableItems = ScanAvailableItems()
+
+    -- Scan World Drops button
+    MainTab:CreateButton({
+        Name="Scan World Drops",
+        Callback=function()
+            local drops = ScanWorldDrops()
+            if #drops == 0 then
+                Rayfield:Notify({Title="Scan World", Content="Tidak ada drop ditemukan!", Duration=3})
+                return
+            end
+            -- Print ke console lengkap
+            print("========= WORLD DROPS =========")
+            for _, d in ipairs(drops) do
+                print(string.format("[%s] %s — %dx", d.Folder, d.Id, d.Count))
+            end
+            print("================================")
+            -- Notify ringkasan top 3
+            local msg = ""
+            for i = 1, math.min(3, #drops) do
+                msg = msg .. drops[i].Id .. " x"..drops[i].Count.."\n"
+            end
+            if #drops > 3 then msg = msg .. "(+"..( #drops-3).." lainnya, cek console)" end
+            Rayfield:Notify({Title="World Drops ("..#drops.." item)", Content=msg, Duration=6})
+        end,
+    })
+
     local blockDropdown = MainTab:CreateDropdown({
         Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikBlockDrop",
         Callback=function(opt)
@@ -994,9 +1039,25 @@ local uiOk, uiErr = pcall(function()
             if v then
                 getgenv().PabrikStartTime = os.time()
                 print("[Pabrik] Enable: true | Timer mulai")
+                task.spawn(function()
+                    SendWebhook(
+                        "✅ **[PABRIK] Dinyalakan**\n"..
+                        "👤 `"..LP.Name.."`  |  🎮 `"..game.Name.."`\n"..
+                        "🌿 Seed: `"..(getgenv().SelectedSeed == "" and "Belum dipilih" or getgenv().SelectedSeed).."`\n"..
+                        "🧱 Block: `"..(getgenv().SelectedBlock == "" and "Belum dipilih" or getgenv().SelectedBlock).."`"
+                    )
+                end)
             else
                 getgenv().PabrikIsRunning = false
                 print("[Pabrik] Enable: false")
+                task.spawn(function()
+                    SendWebhook(
+                        "🛑 **[PABRIK] Dimatikan Manual**\n"..
+                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                        "📊 Cycle selesai: `"..(getgenv().CycleCount or 0).."x`\n"..
+                        "📦 Total drop: `"..(getgenv().TotalDropAllTime or 0).."x`"
+                    )
+                end)
             end
         end,
     })
@@ -1048,4 +1109,3 @@ end)
 if not uiOk then warn("[Pabrik] UI Error: "..tostring(uiErr)) end
 
 print("[Pabrik v3] Load selesai! Heartbeat:", getgenv().RaihjnHeartbeatPabrik ~= nil)
-
