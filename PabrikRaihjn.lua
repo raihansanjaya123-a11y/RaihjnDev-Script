@@ -335,57 +335,6 @@ end
 -- DROP / UI HELPERS
 -- ============================================================
 
--- Object permanen yang pasti bukan drop
-local PERM_NAMES = {
-    Baseplate=true, SpawnLocation=true, Terrain=true, Camera=true,
-    HumanoidRootPart=true, Head=true, Torso=true,
-    ["Left Arm"]=true, ["Right Arm"]=true, ["Left Leg"]=true, ["Right Leg"]=true,
-}
-local PERM_CLASS = {
-    Terrain=true, Camera=true, Script=true, LocalScript=true,
-    ModuleScript=true, Humanoid=true, Animator=true,
-}
-
-local function GetObjPos(obj)
-    if obj:IsA("BasePart") then return obj.Position end
-    if obj:IsA("Model") then
-        local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-        if p then return p.Position end
-    end
-    return nil
-end
-
-local function IsPermObject(obj)
-    if PERM_NAMES[obj.Name] then return true end
-    if PERM_CLASS[obj.ClassName] then return true end
-    -- Skip kalau bagian dari karakter player
-    for _, p in pairs(Players:GetPlayers()) do
-        if p.Character and obj:IsDescendantOf(p.Character) then return true end
-    end
-    -- Skip kalau bagian dari hitbox
-    local hitbox = workspace:FindFirstChild("Hitbox")
-    if hitbox and obj:IsDescendantOf(hitbox) then return true end
-    return false
-end
-
-local function CheckDropsAtGrid(gx, gy)
-    local gs = getgenv().GridSize
-    -- Scan semua descendants workspace cari object di posisi grid ini
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if IsPermObject(obj) then continue end
-        local pos = GetObjPos(obj)
-        if pos then
-            local dx = math.floor(pos.X / gs + 0.5)
-            local dy = math.floor(pos.Y / gs + 0.5)
-            if dx == gx and dy == gy then
-                -- Ada object di tile ini — kemungkinan drop
-                return true
-            end
-        end
-    end
-    return false
-end
-
 local function GetDropRemote()
     local rem = RS:FindFirstChild("Remotes")
     if not rem then return nil end
@@ -543,46 +492,10 @@ local function DoFarmBlockLoop(breakPosX, breakPosY)
             task.wait(getgenv().BreakDelay)
         end
 
-        if CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) then
-            local char = LP.Character
-            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-            local hum  = char and char:FindFirstChildOfClass("Humanoid")
-            local mh   = GetMyHitbox()
-            local eCF  = hrp and hrp.CFrame
-            local eHCF = mh  and mh.CFrame
-            local ePM
-            if PlayerMovement then pcall(function() ePM = PlayerMovement.Position end) end
-
-            if hrp then hrp.Anchored=true; getgenv().HoldCFrame=eCF; getgenv().IsGhosting=true end
-            if hum then
-                local anim   = hum:FindFirstChildOfClass("Animator")
-                local tracks = anim and anim:GetPlayingAnimationTracks() or hum:GetPlayingAnimationTracks()
-                for _, t in ipairs(tracks) do t:Stop(0) end
-            end
-
-            walkToGrid(BreakTarget.X, BreakTarget.Y)
-            local t = 0
-            while CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) and t < 15 and getgenv().EnablePabrik do
-                task.wait(0.1); t = t + 1
-            end
-            task.wait(0.1)
-            walkToGrid(breakPosX, breakPosY)
-
-            if hrp and eCF then
-                hrp.AssemblyLinearVelocity  = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-                if mh and eHCF then mh.CFrame = eHCF; mh.AssemblyLinearVelocity = Vector3.zero end
-                hrp.CFrame = eCF
-                if PlayerMovement and ePM then pcall(function()
-                    PlayerMovement.Position=ePM; PlayerMovement.OldPosition=ePM
-                    PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0
-                    PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true
-                end) end
-                RunService.Heartbeat:Wait(); RunService.Heartbeat:Wait()
-                hrp.Anchored = false
-            end
-            getgenv().IsGhosting = false
-        end
+        -- Collect drop dengan jalan ke tile langsung
+        walkToGrid(BreakTarget.X, BreakTarget.Y)
+        task.wait(0.2)
+        walkToGrid(breakPosX, breakPosY)
     end
 end
 
@@ -623,8 +536,7 @@ end
 local mainCoro = coroutine.create(function()
     while true do
         task.wait(1)
-        if not getgenv().EnablePabrik then continue end
-        if getgenv().PabrikIsRunning  then continue end
+        if getgenv().EnablePabrik and not getgenv().PabrikIsRunning then
 
         getgenv().PabrikIsRunning = true
         local ok, err = pcall(function()
@@ -831,26 +743,17 @@ local mainCoro = coroutine.create(function()
                         retryY = retryY + 1
                     end
 
-                    -- Scan seluruh X=StartX sampai EndX di Y ini
+                    -- Jalan ke setiap tile X — collect otomatis saat badan lewat
                     for gx = getgenv().PabrikStartX, getgenv().PabrikEndX do
                         if not getgenv().EnablePabrik then break end
-                        if CheckDropsAtGrid(gx, gy) then
-                            walkToGrid(gx, gy)
-                            -- Verifikasi posisi X
-                            local retryX = 0
-                            while retryX < 3 do
-                                local cx, cy = GetMyPosition()
-                                if cx == gx and cy == gy then break end
-                                SetHitBoxPos(gx, gy)
-                                task.wait(0.05)
-                                retryX = retryX + 1
-                            end
-                            -- Tunggu collect max 0.5 detik lalu lanjut
-                            local t = 0
-                            while CheckDropsAtGrid(gx, gy) and t < 5 and getgenv().EnablePabrik do
-                                task.wait(0.1); t = t + 1
-                            end
+                        walkToGrid(gx, gy)
+                        -- Verifikasi Y tidak blink setelah jalan
+                        local cx, cy = GetMyPosition()
+                        if cy ~= gy then
+                            SetHitBoxPos(gx, gy)
+                            task.wait(0.1)
                         end
+                        task.wait(getgenv().StepDelay or 0.1)
                     end
                 end
 
@@ -931,6 +834,7 @@ local mainCoro = coroutine.create(function()
         end)
         if not ok then warn("[Pabrik] Error:", err) end
         getgenv().PabrikIsRunning = false
+        end -- end if EnablePabrik
     end
 end)
 
