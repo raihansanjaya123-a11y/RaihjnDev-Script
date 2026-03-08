@@ -166,15 +166,19 @@ local function SetHitBoxPos(x, y)
     if not h then return end
     local pos = Vector3.new(x * getgenv().GridSize, y * getgenv().GridSize, h.Position.Z)
     h.CFrame = CFrame.new(pos)
+    -- Sync HRP hanya kalau posisinya jauh, supaya tidak fight physics engine
     pcall(function()
         local char = LP.Character
         if char then
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if hrp and not hrp.Anchored then
-                local hrpPos = hrp.Position
-                hrp.CFrame = CFrame.new(Vector3.new(pos.X, pos.Y, hrpPos.Z))
-                hrp.AssemblyLinearVelocity  = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
+                local diff = (hrp.Position - Vector3.new(pos.X, pos.Y, hrp.Position.Z)).Magnitude
+                if diff > getgenv().GridSize then
+                    -- Jauh banget, baru sync HRP
+                    hrp.CFrame = CFrame.new(Vector3.new(pos.X, pos.Y, hrp.Position.Z))
+                    hrp.AssemblyLinearVelocity  = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                end
             end
         end
     end)
@@ -191,14 +195,22 @@ local function SetHitBoxPos(x, y)
 end
 
 local function walkToGrid(targetX, targetY)
+    local maxSteps = math.abs(targetX - (select(1, GetMyPosition()))) +
+                     math.abs(targetY - (select(2, GetMyPosition()))) + 10
+    local steps = 0
     local cx, cy = GetMyPosition()
-    while cx ~= targetX or cy ~= targetY do
+    while (cx ~= targetX or cy ~= targetY) and steps < maxSteps do
         if not getgenv().EnablePabrik then break end
         if cx ~= targetX then cx = cx + (targetX > cx and 1 or -1)
         else cy = cy + (targetY > cy and 1 or -1) end
         SetHitBoxPos(cx, cy)
         task.wait(getgenv().StepDelay)
+        -- Re-read posisi setelah step supaya tidak drift
+        local rx, ry = GetMyPosition()
+        if rx == targetX and ry == targetY then break end
+        steps = steps + 1
     end
+    -- Paksa ke target di akhir
     SetHitBoxPos(targetX, targetY)
 end
 
@@ -646,12 +658,27 @@ local mainCoro = coroutine.create(function()
                 EnsurePosition(point.X, point.Y)
                 DoBreak(point.X, point.Y)
             end
-            -- Sweep balik
+            -- Sweep balik — collect drops per tile
             if getgenv().EnablePabrik then
+                local prevX, prevY = nil, nil
                 for i = #plantedTiles, 1, -1 do
                     if not getgenv().EnablePabrik then break end
-                    walkToGrid(plantedTiles[i].X, plantedTiles[i].Y)
-                    task.wait(0.05)
+                    local tx = plantedTiles[i].X
+                    local ty = plantedTiles[i].Y
+                    if tx ~= prevX or ty ~= prevY then
+                        SetHitBoxPos(tx, ty)
+                        task.wait(getgenv().StepDelay)
+                        -- Tunggu collect drop di tile ini
+                        local t = 0
+                        while CheckDropsAtGrid(tx, ty) and t < 10 and getgenv().EnablePabrik do
+                            task.wait(0.1); t = t + 1
+                        end
+                        prevX, prevY = tx, ty
+                    end
+                end
+                -- Jalan smooth ke BreakPos supaya tidak blink
+                if getgenv().EnablePabrik then
+                    walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
                 end
             end
 
@@ -671,8 +698,8 @@ local mainCoro = coroutine.create(function()
             -- FASE 4: FARM BLOCK
             if not getgenv().EnablePabrik then return end
             print("[Block] Farm block")
-            walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
-            task.wait(0.5)
+            -- Sudah di BreakPos dari sweep balik, langsung mulai
+            task.wait(0.3)
             local breakStart = os.time()
             DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
             local breakSec  = os.time() - breakStart
@@ -749,7 +776,7 @@ local uiOk, uiErr = pcall(function()
     MainTab:CreateSection("Item Settings")
     local availableItems = ScanAvailableItems()
 
-    MainTab:CreateDropdown({
+    local blockDropdown = MainTab:CreateDropdown({
         Name="Select Block", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikBlockDrop",
         Callback=function(opt)
             local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
@@ -757,14 +784,11 @@ local uiOk, uiErr = pcall(function()
             Rayfield:Notify({Title="Block", Content=id, Duration=2})
         end,
     })
-    MainTab:CreateDropdown({
+    local seedDropdown = MainTab:CreateDropdown({
         Name="Select Seed", Options=availableItems, CurrentOption=availableItems[1], Flag="PabrikSeedDrop",
         Callback=function(opt)
             local id = type(opt)=="table" and tostring(opt[1] or "") or tostring(opt)
-            -- Auto tambah _sapling kalau belum ada
-            if not id:find("_sapling") then
-                id = id .. "_sapling"
-            end
+            if not id:find("_sapling") then id = id .. "_sapling" end
             getgenv().SelectedSeed = id
             Rayfield:Notify({Title="Seed", Content=id, Duration=2})
         end,
@@ -773,17 +797,22 @@ local uiOk, uiErr = pcall(function()
         Name="Refresh Item List",
         Callback=function()
             local items = ScanAvailableItems()
-            local blockDrop = Rayfield.Flags["PabrikBlockDrop"]
-            local seedDrop  = Rayfield.Flags["PabrikSeedDrop"]
-            if blockDrop and seedDrop then
-                pcall(function()
-                    blockDrop:UpdateOptions(items)
-                    seedDrop:UpdateOptions(items)
-                end)
-            else
-                warn("Dropdown tidak ditemukan!")
+            -- Coba semua method yang mungkin ada di Rayfield
+            local ok1 = pcall(function() blockDropdown:Refresh(items, items[1]) end)
+            if not ok1 then
+                local ok2 = pcall(function() blockDropdown:UpdateOptions(items) end)
+                if not ok2 then
+                    pcall(function() blockDropdown:Set(items[1]) end)
+                end
             end
-            Rayfield:Notify({Title="Refresh", Content="Item list diperbarui!", Duration=2})
+            local ok3 = pcall(function() seedDropdown:Refresh(items, items[1]) end)
+            if not ok3 then
+                local ok4 = pcall(function() seedDropdown:UpdateOptions(items) end)
+                if not ok4 then
+                    pcall(function() seedDropdown:Set(items[1]) end)
+                end
+            end
+            Rayfield:Notify({Title="Refresh", Content=#items.." item ditemukan!", Duration=2})
         end,
     })
 
