@@ -120,6 +120,7 @@ local function CleanupAll()
         pcall(function() task.cancel(getgenv().AFBlockLoop) end)
         getgenv().AFBlockLoop = nil
     end
+    -- Stop auto scan (dihandle di Autoban.lua)
     getgenv().IsGhosting=false; getgenv().HoldCFrame=nil
     getgenv().AFB_IsGhosting=false; getgenv().AFB_HoldCFrame=nil
     pcall(function()
@@ -216,8 +217,14 @@ WebhookTab:CreateSection("Stats Pabrik")
 WebhookTab:CreateButton({
     Name="📊 Lihat Stats Pabrik",
     Callback=function()
-        local msg = "Cycle: "..(getgenv().CycleCount or 0).."\nTotal Drop: "..(getgenv().TotalDropAllTime or 0).."\nSeed: "..(getgenv().SelectedSeed or "?")
-        Rayfield:Notify({Title="Stats Pabrik", Content=msg, Duration=6})
+        local elapsed = os.time() - (getgenv().PabrikStartTime or os.time())
+        local msg =
+            "Cycle: "..(getgenv().CycleCount or 0).."\n"..
+            "Total Drop: "..(getgenv().TotalDropAllTime or 0).."\n"..
+            "Seed: "..(getgenv().SelectedSeed ~= "" and getgenv().SelectedSeed or "Belum dipilih").."\n"..
+            "Block: "..(getgenv().SelectedBlock ~= "" and getgenv().SelectedBlock or "Belum dipilih").."\n"..
+            "Uptime: "..FormatTime(elapsed)
+        Rayfield:Notify({Title="Stats Pabrik", Content=msg, Duration=8})
     end,
 })
 
