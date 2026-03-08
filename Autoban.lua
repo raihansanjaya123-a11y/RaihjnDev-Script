@@ -321,25 +321,25 @@ local skipNames = {
 local function ScanAll()
     local found = {}
     for _, obj in ipairs(workspace:GetDescendants()) do
-        if skipClasses[obj.ClassName] then continue end
-        if skipNames[obj.Name] then continue end
-        -- Skip kalau parent adalah karakter player
-        local parentIsChar = false
-        for _, p in pairs(Players:GetPlayers()) do
-            if p.Character and obj:IsDescendantOf(p.Character) then
-                parentIsChar = true; break
+        if not skipClasses[obj.ClassName] and not skipNames[obj.Name] then
+            -- Skip kalau parent adalah karakter player
+            local parentIsChar = false
+            for _, p in pairs(Players:GetPlayers()) do
+                if p.Character and obj:IsDescendantOf(p.Character) then
+                    parentIsChar = true; break
+                end
             end
-        end
-        if parentIsChar then continue end
-
-        local id = GetItemId(obj)
-        if id then
-            local amt = GetAmount(obj)
-            local parent = obj.Parent and obj.Parent.Name or "workspace"
-            if not found[id] then
-                found[id] = {Id=id, Count=0, Parent=parent}
+            if not parentIsChar then
+                local id = GetItemId(obj)
+                if id then
+                    local amt = GetAmount(obj)
+                    local parent = obj.Parent and obj.Parent.Name or "workspace"
+                    if not found[id] then
+                        found[id] = {Id=id, Count=0, Parent=parent}
+                    end
+                    found[id].Count = found[id].Count + amt
+                end
             end
-            found[id].Count = found[id].Count + amt
         end
     end
     return found
