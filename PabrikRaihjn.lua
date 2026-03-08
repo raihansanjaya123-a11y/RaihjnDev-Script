@@ -40,7 +40,7 @@ getgenv().SelectedSeed     = getgenv().SelectedSeed     or ""
 getgenv().SelectedBlock    = getgenv().SelectedBlock    or ""
 getgenv().IsGhosting       = false
 getgenv().HoldCFrame       = nil
-getgenv().PlantHitCount    = getgenv().PlantHitCount    or 2
+getgenv().PlantHitCount    = getgenv().PlantHitCount    or 1
 getgenv().YGap             = getgenv().YGap             or 2
 getgenv().PlaceDelay       = getgenv().PlaceDelay       or 0.1
 getgenv().DropDelay        = getgenv().DropDelay        or 0.5
@@ -1074,3 +1074,4 @@ end)
 if not uiOk then warn("[Pabrik] UI Error: "..tostring(uiErr)) end
 
 print("[Pabrik v3] Load selesai! Heartbeat:", getgenv().RaihjnHeartbeatPabrik ~= nil)
+
