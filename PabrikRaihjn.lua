@@ -301,27 +301,9 @@ local function EnsurePosition(targetX, targetY)
 end
 
 -- ============================================================
--- DETEKSI BLOCK PENGHALANG (aman, no raycast)
+-- DETEKSI BLOCK PENGHALANG (dinonaktifkan — CAW tidak pakai)
 -- ============================================================
 local function IsBlockedTile(gx, gy)
-    -- Hanya scan folder, tidak pakai Raycast (lebih aman di mobile executor)
-    for _, fname in ipairs({"Blocks","Tiles","World","Map","Chunks"}) do
-        local folder = workspace:FindFirstChild(fname)
-        if folder then
-            for _, obj in pairs(folder:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                    local ok2, dx, dy = pcall(function()
-                        return
-                            math.floor(obj.Position.X / getgenv().GridSize + 0.5),
-                            math.floor(obj.Position.Y / getgenv().GridSize + 0.5)
-                    end)
-                    if ok2 and dx == gx and dy == gy then
-                        return true
-                    end
-                end
-            end
-        end
-    end
     return false
 end
 
@@ -691,6 +673,7 @@ local mainCoro = coroutine.create(function()
 
             local lastPlantedX, lastPlantedY = nil, nil
             local plantedTiles = {}
+            local skippedTiles = {}
             local skippedCount = 0
             local lastY = nil
 
@@ -703,32 +686,96 @@ local mainCoro = coroutine.create(function()
                     )
                     break
                 end
-                if IsBlockedTile(point.X, point.Y) then
+
+                -- Coba dapat slot, retry 3x
+                local slot = nil
+                for retry = 1, 3 do
+                    slot = GetSlotByItemID(getgenv().SelectedSeed)
+                    if slot then break end
+                    task.wait(0.3)
+                end
+
+                if not slot then
+                    -- Seed habis beneran
+                    print("[Plant] Seed habis di tile", i)
+                    SendWebhook(
+                        "⚠️ **[SEED HABIS — PLANT]** Siklus #"..cycleNum.."\n"..
+                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                        "🌱 Planted: `"..#plantedTiles.."x`  |  Tile ke-`"..i.."`"
+                    )
+                    break
+                end
+
+                -- Jalan ke tile ini
+                if lastY ~= nil and point.Y ~= lastY then
+                    walkToGridSafe(point.X, point.Y)
+                else
+                    walkToGrid(point.X, point.Y)
+                end
+                lastY = point.Y
+                EnsurePosition(point.X, point.Y)
+                if not getgenv().EnablePabrik then break end
+
+                -- Cek ulang slot tepat sebelum plant (bisa berubah saat jalan)
+                slot = GetSlotByItemID(getgenv().SelectedSeed)
+                if not slot then
+                    -- Slot hilang saat jalan — simpan tile ini, nanti balik
+                    print("[Plant] Slot hilang saat jalan ke tile", i, "— simpan untuk retry")
+                    table.insert(skippedTiles, {X=point.X, Y=point.Y})
                     skippedCount = skippedCount + 1
                 else
-                    local slot = GetSlotByItemID(getgenv().SelectedSeed)
-                    if not slot then
-                        print("[Plant] Seed habis di tile", i)
-                        SendWebhook(
-                            "⚠️ **[SEED HABIS — PLANT]** Siklus #"..cycleNum.."\n"..
-                            "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                            "🌱 Planted: `"..#plantedTiles.."x`  |  Tile ke-`"..i.."`"
-                        )
-                        break
-                    end
-                    if lastY ~= nil and point.Y ~= lastY then
-                        walkToGridSafe(point.X, point.Y)
-                    else
-                        walkToGrid(point.X, point.Y)
-                    end
-                    lastY = point.Y
-                    EnsurePosition(point.X, point.Y)
-                    if not getgenv().EnablePabrik then break end
                     Doplant(point.X, point.Y, slot)
                     task.wait(getgenv().PlaceDelay)
                     lastPlantedX = point.X
                     lastPlantedY = point.Y
                     table.insert(plantedTiles, {X=point.X, Y=point.Y})
+
+                    -- Langsung retry tile yang di-skip sebelumnya
+                    if #skippedTiles > 0 then
+                        local stillSkipped = {}
+                        for _, sk in ipairs(skippedTiles) do
+                            if not getgenv().EnablePabrik then break end
+                            local retrySlot = nil
+                            for r = 1, 3 do
+                                retrySlot = GetSlotByItemID(getgenv().SelectedSeed)
+                                if retrySlot then break end
+                                task.wait(0.3)
+                            end
+                            if not retrySlot then
+                                table.insert(stillSkipped, sk)
+                            else
+                                -- Balik ke tile yang di-skip
+                                if sk.Y ~= lastY then
+                                    walkToGridSafe(sk.X, sk.Y)
+                                else
+                                    walkToGrid(sk.X, sk.Y)
+                                end
+                                lastY = sk.Y
+                                EnsurePosition(sk.X, sk.Y)
+                                if not getgenv().EnablePabrik then break end
+                                retrySlot = GetSlotByItemID(getgenv().SelectedSeed)
+                                if retrySlot then
+                                    Doplant(sk.X, sk.Y, retrySlot)
+                                    task.wait(getgenv().PlaceDelay)
+                                    lastPlantedX = sk.X
+                                    lastPlantedY = sk.Y
+                                    table.insert(plantedTiles, {X=sk.X, Y=sk.Y})
+                                    skippedCount = skippedCount - 1
+                                    print("[Plant] Retry berhasil tile X="..sk.X.." Y="..sk.Y)
+                                    -- Balik ke posisi tile saat ini supaya lanjut dari sini
+                                    if point.Y ~= lastY then
+                                        walkToGridSafe(point.X, point.Y)
+                                    else
+                                        walkToGrid(point.X, point.Y)
+                                    end
+                                    lastY = point.Y
+                                else
+                                    table.insert(stillSkipped, sk)
+                                end
+                            end
+                        end
+                        skippedTiles = stillSkipped
+                    end
                 end
             end
 
