@@ -922,6 +922,11 @@ local mainCoro = coroutine.create(function()
 
             local breakStart = os.time()
             local breakUpdateThread = task.spawn(function()
+                -- Tunggu msgIdBreak dapat value dulu (max 10 detik)
+                local waited = 0
+                while not msgIdBreak and waited < 10 do
+                    task.wait(1); waited = waited + 1
+                end
                 local updateCount = 0
                 while getgenv().EnablePabrik and getgenv().PabrikIsRunning do
                     task.wait(60)
