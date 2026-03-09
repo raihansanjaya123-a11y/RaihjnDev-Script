@@ -191,6 +191,19 @@ local function SetHitBoxPos(x, y)
     if not h then return end
     local pos = Vector3.new(x * getgenv().GridSize, y * getgenv().GridSize, h.Position.Z)
     h.CFrame = CFrame.new(pos)
+
+    -- Sync HRP ke posisi hitbox supaya server tidak koreksi balik
+    local char = LP.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local hrpZ = hrp.Position.Z
+            hrp.CFrame = CFrame.new(Vector3.new(pos.X, pos.Y, hrpZ))
+            hrp.AssemblyLinearVelocity  = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+        end
+    end
+
     if PlayerMovement then
         pcall(function()
             PlayerMovement.Position    = pos
@@ -201,6 +214,22 @@ local function SetHitBoxPos(x, y)
             PlayerMovement.Grounded    = true
         end)
     end
+end
+
+-- SetHitBoxPos dengan retry sampai posisi confirmed (anti lag server)
+local function SetHitBoxPosConfirmed(x, y)
+    for i = 1, 10 do
+        SetHitBoxPos(x, y)
+        -- Tunggu 2 heartbeat supaya server sempat proses
+        game:GetService("RunService").Heartbeat:Wait()
+        game:GetService("RunService").Heartbeat:Wait()
+        local ax, ay = GetMyPosition()
+        if ax == x and ay == y then return true end
+        task.wait(0.08)
+    end
+    -- Last resort: paksa lagi sekali dan lanjut
+    SetHitBoxPos(x, y)
+    return false
 end
 
 local function walkToGrid(targetX, targetY)
@@ -253,7 +282,7 @@ local function walkToGridSafe(targetX, targetY)
     local stepY = targetY > cy and 1 or -1
     while cy ~= targetY do
         cy = cy + stepY
-        SetHitBoxPos(safeX, cy)
+        SetHitBoxPosConfirmed(safeX, cy)
         WaitIfPaused()
         task.wait(getgenv().StepDelay)
     end
@@ -261,7 +290,7 @@ local function walkToGridSafe(targetX, targetY)
     local _, actualY = GetMyPosition()
     local retryY = 0
     while actualY ~= targetY and retryY < 10 do
-        SetHitBoxPos(safeX, targetY)
+        SetHitBoxPosConfirmed(safeX, targetY)
         task.wait(0.1)
         _, actualY = GetMyPosition()
         retryY = retryY + 1
@@ -999,6 +1028,15 @@ local mainCoro = coroutine.create(function()
             getgenv().CycleCount       = getgenv().CycleCount + 1
             print("[Drop] Cycle:", droppedThisCycle, "| Total:", getgenv().TotalDropAllTime)
 
+            -- Ambil ping
+            local pingVal = nil
+            pcall(function()
+                local stats = game:GetService("Stats")
+                pingVal = math.floor(stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+            end)
+            local pingStr   = pingVal and (pingVal.."ms") or "N/A"
+            local pingEmoji = pingVal == nil and "❓" or pingVal < 80 and "🟢" or pingVal < 150 and "🟡" or "🔴"
+
             -- DETAIL: FASE 5 SELESAI + edit ringkasan ke pesan siklus
             local ringkasan =
                 "━━━━━━━━━━━━━━━━━━━━━━\n"..
@@ -1008,7 +1046,8 @@ local mainCoro = coroutine.create(function()
                 "🌱 Plant: `"..plantedCount.."x`  ⛔ Skip: `"..skippedCount.."`\n"..
                 "⛏️ Harvest: `"..blockGained.."x` blk  `"..seedGained.."x` seed\n"..
                 "🔨 Break: `"..string.format("%02d:%02d", bm, bs).."` | Sisa: `"..blockSisa.."x`\n"..
-                "📦 Drop: `"..droppedThisCycle.."x`  |  Total: `"..getgenv().TotalDropAllTime.."x`"
+                "📦 Drop: `"..droppedThisCycle.."x`  |  Total: `"..getgenv().TotalDropAllTime.."x`\n"..
+                pingEmoji.." Ping: `"..pingStr.."`"
             EditWebhook(msgIdDrop,
                 "📦 **[FASE 5 — DROP]** Siklus #"..getgenv().CycleCount.." ✅ Selesai\n"..
                 "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
