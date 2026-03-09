@@ -441,16 +441,29 @@ end
 
 local function ForceRestoreUI()
     pcall(function()
-        if UIManager and type(UIManager.ClosePrompt)=="function" then UIManager:ClosePrompt() end
-        for _, g in pairs(LP.PlayerGui:GetDescendants()) do
-            if g:IsA("Frame") and g.Name:lower():find("prompt") then g.Visible=false end
+        if UIManager and type(UIManager.ClosePrompt) == "function" then UIManager:ClosePrompt() end
+        for _, gui in pairs(LP.PlayerGui:GetDescendants()) do
+            if gui:IsA("Frame") and string.find(string.lower(gui.Name), "prompt") then gui.Visible = false end
         end
     end)
     task.wait(0.1)
     pcall(function()
         if UIManager then
-            if type(UIManager.ShowHUD)=="function" then UIManager:ShowHUD() end
-            if type(UIManager.ShowUI)=="function"  then UIManager:ShowUI() end
+            if type(UIManager.ShowHUD) == "function" then UIManager:ShowHUD() end
+            if type(UIManager.ShowUI)  == "function" then UIManager:ShowUI() end
+        end
+    end)
+    pcall(function()
+        local targetUIs = {"topbar","gems","playerui","hotbar","crosshair","mainhud","stats","inventory","backpack","menu","bottombar","buttons"}
+        for _, gui in pairs(LP.PlayerGui:GetDescendants()) do
+            if gui:IsA("Frame") or gui:IsA("ScreenGui") or gui:IsA("ImageLabel") then
+                local gName = string.lower(gui.Name)
+                for _, tName in ipairs(targetUIs) do
+                    if string.find(gName, tName) and not string.find(gName, "prompt") then
+                        if gui:IsA("ScreenGui") then gui.Enabled = true else gui.Visible = true end
+                    end
+                end
+            end
         end
     end)
 end
@@ -909,13 +922,19 @@ local mainCoro = coroutine.create(function()
                 end
                 local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
                 table.sort(yList, function(a,b) return farmGoUp and (a>b) or (a<b) end)
-                local cx, _ = GetMyPosition()
+
+                -- Posisi awal dari harvest terakhir
+                local cx, cy = GetMyPosition()
                 for _, gy in ipairs(yList) do
                     if ShouldStop() then break end
-                    local _, cy = GetMyPosition()
-                    if cy ~= gy then walkToGridSafe(cx, gy) end
-                    cx, _ = GetMyPosition()
-                    local targetX = (cx == getgenv().PabrikStartX) and getgenv().PabrikEndX or getgenv().PabrikStartX
+                    -- Pindah Y langsung dari posisi sekarang, tidak perlu via safeX
+                    if cy ~= gy then
+                        walkToGrid(cx, gy)
+                        cy = gy
+                    end
+                    -- Arah X dari posisi cx sekarang ke ujung berlawanan
+                    local targetX = (cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2)
+                        and getgenv().PabrikEndX or getgenv().PabrikStartX
                     local xstep = cx < targetX and 1 or -1
                     local gx = cx
                     while true do
