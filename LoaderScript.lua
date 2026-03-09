@@ -59,7 +59,7 @@ local function FormatTime(seconds)
 end
 
 -- ============================================================
--- WEBHOOK SENDER
+-- WEBHOOK SENDER (support edit pesan)
 -- ============================================================
 local HttpService
 pcall(function() HttpService = game:GetService("HttpService") end)
@@ -67,33 +67,79 @@ pcall(function() HttpService = game:GetService("HttpService") end)
 local webhookQueue   = {}
 local webhookRunning = false
 
+local function DoRequest(method, url, body)
+    local fn = syn and syn.request or http and http.request or request
+    if not fn then return nil end
+    local ok, res = pcall(function()
+        return fn({
+            Url     = url,
+            Method  = method,
+            Headers = {["Content-Type"] = "application/json"},
+            Body    = body,
+        })
+    end)
+    if not ok then return nil end
+    return res
+end
+
+-- Kirim pesan baru, return message_id (atau nil kalau gagal)
+local function SendNew(message)
+    local url = getgenv().WebhookURL
+    if not url or url == "" or not HttpService then return nil end
+    local body = HttpService:JSONEncode({content=message, username="RaihjnDev Bot"})
+    -- Butuh ?wait=true supaya Discord kembalikan message object dengan id
+    local res = DoRequest("POST", url .. "?wait=true", body)
+    if res and res.Body then
+        local ok, data = pcall(function() return HttpService:JSONDecode(res.Body) end)
+        if ok and data and data.id then
+            return tostring(data.id)
+        end
+    end
+    return nil
+end
+
+-- Edit pesan yang sudah ada berdasarkan message_id
+local function EditMessage(messageId, newContent)
+    local url = getgenv().WebhookURL
+    if not url or url == "" or not HttpService or not messageId then return end
+    local body = HttpService:JSONEncode({content=newContent})
+    DoRequest("PATCH", url .. "/messages/" .. messageId, body)
+end
+
 local function ProcessQueue()
     if webhookRunning then return end
     webhookRunning = true
     task.spawn(function()
         while #webhookQueue > 0 do
-            local payload = table.remove(webhookQueue, 1)
-            local url = getgenv().WebhookURL
-            if url and url ~= "" and HttpService then
-                pcall(function()
-                    local body = HttpService:JSONEncode(payload)
-                    local fn = syn and syn.request or http and http.request or request
-                    if fn then
-                        fn({Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body})
-                    end
-                end)
+            local item = table.remove(webhookQueue, 1)
+            if item.type == "new" then
+                local msgId = SendNew(item.content)
+                if item.callback then item.callback(msgId) end
+            elseif item.type == "edit" then
+                EditMessage(item.messageId, item.content)
             end
-            task.wait(1.5)
+            task.wait(1)
         end
         webhookRunning = false
     end)
 end
 
-getgenv().SendWebhook = function(message)
+-- Kirim pesan baru, callback(messageId) dipanggil setelah dapat id
+getgenv().SendWebhook = function(message, callback)
     if not HttpService then return end
     if not getgenv().WebhookURL or getgenv().WebhookURL == "" then return end
     if type(message) ~= "string" then message = tostring(message) end
-    table.insert(webhookQueue, {content=message, username="RaihjnDev Bot"})
+    table.insert(webhookQueue, {type="new", content=message, callback=callback})
+    ProcessQueue()
+end
+
+-- Edit pesan yang sudah ada
+getgenv().EditWebhook = function(messageId, newContent)
+    if not HttpService then return end
+    if not getgenv().WebhookURL or getgenv().WebhookURL == "" then return end
+    if not messageId then return end
+    if type(newContent) ~= "string" then newContent = tostring(newContent) end
+    table.insert(webhookQueue, {type="edit", messageId=messageId, content=newContent})
     ProcessQueue()
 end
 
