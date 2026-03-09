@@ -278,10 +278,12 @@ local function walkToGridSafe(targetX, targetY)
         retryX = retryX + 1
     end
 
-    -- Step 2: naik/turun Y di safeX
+    -- Step 2: naik/turun Y di safeX — aktifkan hover lock anti gravity
     local stepY = targetY > cy and 1 or -1
+    StartHoverLock(safeX, cy)
     while cy ~= targetY do
         cy = cy + stepY
+        UpdateHoverLock(safeX, cy)
         SetHitBoxPosConfirmed(safeX, cy)
         WaitIfPaused()
         task.wait(getgenv().StepDelay)
@@ -295,6 +297,7 @@ local function walkToGridSafe(targetX, targetY)
         _, actualY = GetMyPosition()
         retryY = retryY + 1
     end
+    StopHoverLock()
 
     -- Step 3: geser ke targetX setelah Y confirmed
     cx = safeX
@@ -502,6 +505,74 @@ local function StopGhost(state)
         PlayerMovement.Position = state.cframe.Position
         PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0
         PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true
+    end) end
+end
+
+-- ============================================================
+-- HOVER LOCK (anti gravity saat naik Y & sweep)
+-- Update HoldCFrame ke posisi target setiap Heartbeat
+-- ============================================================
+local hoverLockConn = nil
+local hoverLockX    = 0
+local hoverLockY    = 0
+
+local function StartHoverLock(gx, gy)
+    hoverLockX = gx
+    hoverLockY = gy
+    if hoverLockConn then return end  -- sudah jalan
+    hoverLockConn = RunService.Heartbeat:Connect(function()
+        if not hoverLockConn then return end
+        local pos = nil
+        local h   = GetMyHitbox()
+        if h then pos = Vector3.new(hoverLockX * getgenv().GridSize, hoverLockY * getgenv().GridSize, h.Position.Z) end
+        if pos then
+            local cf = CFrame.new(pos)
+            getgenv().HoldCFrame  = cf
+            getgenv().IsGhosting  = true
+            if h then
+                pcall(function()
+                    h.CFrame = cf
+                    h.AssemblyLinearVelocity  = Vector3.zero
+                    h.AssemblyAngularVelocity = Vector3.zero
+                end)
+            end
+            local char = LP.Character
+            if char then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then pcall(function()
+                    hrp.CFrame = CFrame.new(Vector3.new(pos.X, pos.Y, hrp.Position.Z))
+                    hrp.AssemblyLinearVelocity  = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                end) end
+            end
+            if PlayerMovement then pcall(function()
+                PlayerMovement.Position    = pos
+                PlayerMovement.OldPosition = pos
+                PlayerMovement.VelocityX   = 0
+                PlayerMovement.VelocityY   = 0
+                PlayerMovement.VelocityZ   = 0
+                PlayerMovement.Grounded    = false
+                PlayerMovement.Jumping     = false
+            end) end
+        end
+    end)
+end
+
+local function UpdateHoverLock(gx, gy)
+    hoverLockX = gx
+    hoverLockY = gy
+end
+
+local function StopHoverLock()
+    if hoverLockConn then
+        hoverLockConn:Disconnect()
+        hoverLockConn = nil
+    end
+    getgenv().IsGhosting = false
+    getgenv().HoldCFrame = nil
+    if PlayerMovement then pcall(function()
+        PlayerMovement.Grounded = true
+        PlayerMovement.VelocityY = 0
     end) end
 end
 
@@ -979,20 +1050,25 @@ local mainCoro = coroutine.create(function()
                 local goRight = getgenv().SweepGoRight ~= nil and getgenv().SweepGoRight
                     or (cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2)
 
+                -- Aktifkan hover lock selama sweep (anti gravity saat collect drop)
+                StartHoverLock(cx, cy)
+
                 for _, gy in ipairs(sweepYList) do
                     if ShouldStop() then break end
 
                     -- Pindah Y pakai safeX
                     if cy ~= gy then
+                        StopHoverLock()
                         walkToGridSafe(cx, gy)
                         cx, cy = GetMyPosition()
+                        StartHoverLock(cx, cy)
                     end
 
                     -- Tentukan targetX berdasarkan arah zigzag sekarang
                     local targetX = goRight and getgenv().PabrikEndX or getgenv().PabrikStartX
                     local xstep   = goRight and 1 or -1
 
-                    -- Sweep X dengan blink detection
+                    -- Sweep X dengan blink detection + hover update
                     local gx = cx
                     local lastGx = nil
                     local blinkCount = 0
@@ -1002,6 +1078,7 @@ local mainCoro = coroutine.create(function()
                         if xstep > 0 and gx > targetX then break end
                         if xstep < 0 and gx < targetX then break end
 
+                        UpdateHoverLock(gx, gy)
                         SetHitBoxPos(gx, gy)
                         WaitIfPaused()
                         task.wait(getgenv().StepDelay)
@@ -1013,9 +1090,11 @@ local mainCoro = coroutine.create(function()
                             if blinkCount >= 3 then
                                 -- Blink loop terdeteksi → stop sweep tile ini, walkToGrid paksa ke targetX
                                 print("[Sweep] Blink terdeteksi di X"..gx.." Y"..gy..", walkToGrid paksa")
+                                StopHoverLock()
                                 walkToGrid(targetX, gy)
                                 gx = targetX
                                 blinkCount = 0
+                                StartHoverLock(gx, gy)
                                 break
                             end
                         else
@@ -1030,6 +1109,8 @@ local mainCoro = coroutine.create(function()
                     -- Balik arah untuk baris berikutnya (zigzag)
                     goRight = not goRight
                 end
+
+                StopHoverLock()
 
                 if not ShouldStop() then
                     walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
