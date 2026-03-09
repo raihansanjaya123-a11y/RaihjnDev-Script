@@ -78,17 +78,13 @@ end
 -- Pause: berhenti di tempat, tunggu sampai di-resume atau di-stop
 local function WaitIfPaused()
     while getgenv().PabrikPaused do
-        if getgenv().PabrikRestartCycle then
-            error("__RESTART__")
-        end
+        if not getgenv().EnablePabrik then return end  -- kalau di-stop saat pause, langsung keluar
+        if getgenv().PabrikRestartCycle then error("__RESTART__") end
         task.wait(0.5)
     end
-    if getgenv().PabrikRestartCycle then
-        error("__RESTART__")
-    end
+    if getgenv().PabrikRestartCycle then error("__RESTART__") end
 end
 
--- Cek apakah harus stop beneran (bukan pause)
 local function ShouldStop()
     WaitIfPaused()
     return not getgenv().EnablePabrik
@@ -209,16 +205,16 @@ end
 
 local function walkToGrid(targetX, targetY)
     local cx, cy = GetMyPosition()
-    -- Geser X dulu di Y sekarang
     while cx ~= targetX do
         cx = cx + (targetX > cx and 1 or -1)
         SetHitBoxPos(cx, cy)
+        WaitIfPaused()
         task.wait(getgenv().StepDelay)
     end
-    -- Geser Y kalau perlu
     while cy ~= targetY do
         cy = cy + (targetY > cy and 1 or -1)
         SetHitBoxPos(cx, cy)
+        WaitIfPaused()
         task.wait(getgenv().StepDelay)
     end
     SetHitBoxPos(targetX, targetY)
@@ -236,10 +232,11 @@ local function walkToGridSafe(targetX, targetY)
     local x2 = getgenv().PabrikEndX
     local safeX = (math.abs(cx - x1) <= math.abs(cx - x2)) and x1 or x2
 
-    -- Step 1: geser X ke safeX dulu
+    -- Step 1: geser ke safeX dulu
     while cx ~= safeX do
         cx = cx + (safeX > cx and 1 or -1)
         SetHitBoxPos(cx, cy)
+        WaitIfPaused()
         task.wait(getgenv().StepDelay)
     end
     -- Verify di safeX
@@ -257,6 +254,7 @@ local function walkToGridSafe(targetX, targetY)
     while cy ~= targetY do
         cy = cy + stepY
         SetHitBoxPos(safeX, cy)
+        WaitIfPaused()
         task.wait(getgenv().StepDelay)
     end
     -- Verify Y
@@ -274,6 +272,7 @@ local function walkToGridSafe(targetX, targetY)
     while cx ~= targetX do
         cx = cx + (targetX > cx and 1 or -1)
         SetHitBoxPos(cx, targetY)
+        WaitIfPaused()
         task.wait(getgenv().StepDelay)
     end
     SetHitBoxPos(targetX, targetY)
@@ -1106,40 +1105,18 @@ local uiOk, uiErr = pcall(function()
     local pauseToggleRef = nil
     local enableToggleRef = nil
 
-    local _toggleLock = false
-
     pauseToggleRef = MainTab:CreateToggle({
         Name="⏸️ Pause Pabrik", CurrentValue=false, Flag="PausePabrikToggle",
         Callback=function(v)
-            if _toggleLock then return end
-            if v and not getgenv().EnablePabrik then
-                _toggleLock = true
-                pcall(function() pauseToggleRef:Set(false) end)
-                _toggleLock = false
-                Rayfield:Notify({Title="⚠️", Content="Enable Pabrik dulu sebelum pause.", Duration=2})
-                return
-            end
             getgenv().PabrikPaused = v
             if v then
-                -- Pause ON → set EnablePabrik false (bot freeze), UI Enable → OFF
-                getgenv().EnablePabrik = false
-                _toggleLock = true
-                pcall(function() enableToggleRef:Set(false) end)
-                _toggleLock = false
                 Rayfield:Notify({Title="⏸️ Paused", Content="Bot berhenti di titik ini.", Duration=3})
                 SendWebhook(
                     "⏸️ **[PABRIK DIPAUSE]**\n"..
                     "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                    "🏭 Siklus: `"..getgenv().CycleCount.."`  |  Lanjut saat di-resume"
+                    "🏭 Siklus: `"..getgenv().CycleCount.."`"
                 )
             else
-                -- Pause OFF → resume, UI Enable → ON
-                getgenv().EnablePabrik = true
-                getgenv().PabrikPaused = false
-                getgenv().PabrikIsRunning = false  -- reset supaya siklus baru bisa mulai kalau yang lama sudah selesai
-                _toggleLock = true
-                pcall(function() enableToggleRef:Set(true) end)
-                _toggleLock = false
                 Rayfield:Notify({Title="▶️ Resumed", Content="Bot lanjut dari titik terakhir.", Duration=3})
                 SendWebhook(
                     "▶️ **[PABRIK DIRESUMED]**\n"..
@@ -1152,36 +1129,25 @@ local uiOk, uiErr = pcall(function()
     enableToggleRef = MainTab:CreateToggle({
         Name="Enable Pabrik", CurrentValue=false, Flag="EnablePabrikToggle",
         Callback=function(v)
-            if _toggleLock then return end
+            getgenv().EnablePabrik = v
             if v then
-                -- Enable ON → fresh start, pastikan pause off
-                getgenv().EnablePabrik = true
                 getgenv().PabrikPaused = false
-                getgenv().PabrikStartTime = os.time()
-                _toggleLock = true
                 pcall(function() pauseToggleRef:Set(false) end)
-                _toggleLock = false
+                getgenv().PabrikStartTime = os.time()
                 SendWebhook(
                     "✅ **[PABRIK DINYALAKAN]**\n"..
                     "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
                     "🌿 Seed: `"..getgenv().SelectedSeed.."`  |  🧱 Block: `"..getgenv().SelectedBlock.."`"
                 )
-                print("[Pabrik] Enable: true")
             else
-                -- Enable OFF → stop beneran
-                getgenv().EnablePabrik = false
                 getgenv().PabrikPaused = false
                 getgenv().PabrikIsRunning = false
-                _toggleLock = true
                 pcall(function() pauseToggleRef:Set(false) end)
-                _toggleLock = false
                 SendWebhook(
-                    "🛑 **[PABRIK DIMATIKAN MANUAL]**\n"..
+                    "🛑 **[PABRIK DIMATIKAN]**\n"..
                     "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                    "🏭 Siklus selesai: `"..getgenv().CycleCount.."`\n"..
-                    "📦 Total drop: `"..getgenv().TotalDropAllTime.."x`"
+                    "🏭 Siklus: `"..getgenv().CycleCount.."`  |  Total drop: `"..getgenv().TotalDropAllTime.."x`"
                 )
-                print("[Pabrik] Enable: false")
             end
         end,
     })
