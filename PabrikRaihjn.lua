@@ -88,6 +88,12 @@ local function WaitIfPaused()
     end
 end
 
+-- Cek apakah harus stop beneran (bukan pause)
+local function ShouldStop()
+    WaitIfPaused()
+    return not getgenv().EnablePabrik
+end
+
 local function FormatElapsed()
     local elapsed = os.time() - (getgenv().PabrikStartTime or os.time())
     local h = math.floor(elapsed / 3600)
@@ -643,7 +649,7 @@ local mainCoro = coroutine.create(function()
 
         getgenv().PabrikIsRunning = true
         local ok, err = pcall(function()
-            if not getgenv().EnablePabrik then return end
+            if ShouldStop() then return end
             if getgenv().SelectedSeed == "" or getgenv().SelectedBlock == "" then
                 print("[Pabrik] Tunggu seed/block dipilih...")
                 SendWebhook(
@@ -681,7 +687,7 @@ local mainCoro = coroutine.create(function()
                 end
                 task.wait(0.5)
                 DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
-                if not getgenv().EnablePabrik then return end
+                if ShouldStop() then return end
                 local d = DoDropSeedLoop()
                 if d > 0 then getgenv().TotalDropAllTime = getgenv().TotalDropAllTime + d end
                 return
@@ -745,9 +751,9 @@ local mainCoro = coroutine.create(function()
                 end
                 lastY = point.Y
                 WaitIfPaused()
-                if not getgenv().EnablePabrik then break end
+                if ShouldStop() then break end
                 EnsurePosition(point.X, point.Y)
-                if not getgenv().EnablePabrik then break end
+                if ShouldStop() then break end
 
                 slot = GetSlotByItemID(getgenv().SelectedSeed)
                 if not slot then
@@ -765,7 +771,7 @@ local mainCoro = coroutine.create(function()
                     if #skippedTiles > 0 then
                         local stillSkipped = {}
                         for _, sk in ipairs(skippedTiles) do
-                            if not getgenv().EnablePabrik then break end
+                            if ShouldStop() then break end
                             local retrySlot = nil
                             for r = 1, 3 do
                                 retrySlot = GetSlotByItemID(getgenv().SelectedSeed)
@@ -779,7 +785,7 @@ local mainCoro = coroutine.create(function()
                                 else walkToGrid(sk.X, sk.Y) end
                                 lastY = sk.Y
                                 EnsurePosition(sk.X, sk.Y)
-                                if not getgenv().EnablePabrik then break end
+                                if ShouldStop() then break end
                                 retrySlot = GetSlotByItemID(getgenv().SelectedSeed)
                                 if retrySlot then
                                     Doplant(sk.X, sk.Y, retrySlot)
@@ -816,7 +822,7 @@ local mainCoro = coroutine.create(function()
             -- ════════════════════════════════
             -- FASE 2: WAIT
             -- ════════════════════════════════
-            if not getgenv().EnablePabrik then return end
+            if ShouldStop() then return end
             local waitTime = getgenv().GrowthTime
 
             local msgIdWait = nil
@@ -837,7 +843,7 @@ local mainCoro = coroutine.create(function()
                     break
                 end
                 WaitIfPaused()
-                if not getgenv().EnablePabrik then break end
+                if ShouldStop() then break end
                 -- edit update sisa waktu tiap 30 detik
                 if waitElapsed % 30 == 0 and waitElapsed > 0 then
                     EditWebhook(msgIdWait,
@@ -859,7 +865,7 @@ local mainCoro = coroutine.create(function()
             -- ════════════════════════════════
             -- FASE 3: HARVEST
             -- ════════════════════════════════
-            if not getgenv().EnablePabrik then return end
+            if ShouldStop() then return end
             print("[Harvest] Mulai,", #plantedTiles, "tile")
             local blockBefore = GetItemAmountByID(getgenv().SelectedBlock)
             local seedBefore  = GetItemAmountByID(getgenv().SelectedSeed)
@@ -888,7 +894,7 @@ local mainCoro = coroutine.create(function()
                 end
                 lastHarvestY = point.Y
                 WaitIfPaused()
-                if not getgenv().EnablePabrik then break end
+                if ShouldStop() then break end
                 EnsurePosition(point.X, point.Y)
                 DoBreak(point.X, point.Y)
             end
@@ -904,7 +910,7 @@ local mainCoro = coroutine.create(function()
                 table.sort(yList, function(a,b) return farmGoUp and (a>b) or (a<b) end)
                 local cx, _ = GetMyPosition()
                 for _, gy in ipairs(yList) do
-                    if not getgenv().EnablePabrik then break end
+                    if ShouldStop() then break end
                     local _, cy = GetMyPosition()
                     if cy ~= gy then walkToGridSafe(cx, gy) end
                     cx, _ = GetMyPosition()
@@ -912,7 +918,7 @@ local mainCoro = coroutine.create(function()
                     local xstep = cx < targetX and 1 or -1
                     local gx = cx
                     while true do
-                        if not getgenv().EnablePabrik then break end
+                        if ShouldStop() then break end
                         if xstep > 0 and gx > targetX then break end
                         if xstep < 0 and gx < targetX then break end
                         SetHitBoxPos(gx, gy)
@@ -940,7 +946,7 @@ local mainCoro = coroutine.create(function()
             -- ════════════════════════════════
             -- FASE 4: BREAK
             -- ════════════════════════════════
-            if not getgenv().EnablePabrik then return end
+            if ShouldStop() then return end
             print("[Block] Farm block")
             task.wait(0.3)
 
@@ -998,7 +1004,7 @@ local mainCoro = coroutine.create(function()
             -- ════════════════════════════════
             -- FASE 5: DROP
             -- ════════════════════════════════
-            if not getgenv().EnablePabrik then return end
+            if ShouldStop() then return end
 
             local msgIdDrop = nil
             SendWebhook(
