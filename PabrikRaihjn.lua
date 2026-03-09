@@ -620,7 +620,7 @@ local function DoDropSeedLoop()
     walkToGrid(getgenv().DropPosX, getgenv().DropPosY)
     task.wait(1.5)
 
-    while getgenv().EnablePabrik do
+    while getgenv().PabrikIsRunning do
         local cur    = GetItemAmountByID(getgenv().SelectedSeed)
         local toDrop = cur - getgenv().KeepSeedAmt
         if toDrop <= 0 then break end
@@ -628,6 +628,7 @@ local function DoDropSeedLoop()
         local ok    = DropItemLogic(getgenv().SelectedSeed, batch)
         if ok then
             dropped = dropped + batch
+            print("[Drop] Dropped:", batch, "| Total this call:", dropped)
             task.wait(getgenv().DropDelay + 0.3)
         else
             break
@@ -645,7 +646,7 @@ end
 local mainCoro = coroutine.create(function()
     while true do
         task.wait(1)
-        if getgenv().EnablePabrik and not getgenv().PabrikIsRunning then
+        if getgenv().EnablePabrik and not getgenv().PabrikIsRunning and not getgenv().PabrikPaused then
 
         getgenv().PabrikIsRunning = true
         local ok, err = pcall(function()
@@ -718,7 +719,7 @@ local mainCoro = coroutine.create(function()
             local lastY = nil
 
             for i, point in ipairs(plantPath) do
-                if not getgenv().EnablePabrik then
+                if ShouldStop() then
                     EditWebhook(msgIdPlant,
                         "🌱 **[FASE 1 — PLANT]** Siklus #"..cycleNum.." 🛑 STOP\n"..
                         "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
@@ -835,7 +836,7 @@ local mainCoro = coroutine.create(function()
 
             local waitElapsed = 0
             while waitElapsed < waitTime do
-                if not getgenv().EnablePabrik then
+                if ShouldStop() then
                     EditWebhook(msgIdWait,
                         "⏳ **[FASE 2 — WAIT]** Siklus #"..cycleNum.." 🛑 STOP\n"..
                         "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
@@ -880,7 +881,7 @@ local mainCoro = coroutine.create(function()
 
             local lastHarvestY = nil
             for _, point in ipairs(plantedTiles) do
-                if not getgenv().EnablePabrik then
+                if ShouldStop() then
                     EditWebhook(msgIdHarvest,
                         "⛏️ **[FASE 3 — HARVEST]** Siklus #"..cycleNum.." 🛑 STOP\n"..
                         "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
@@ -900,7 +901,7 @@ local mainCoro = coroutine.create(function()
             end
 
             -- Sweep zigzag cepat
-            if getgenv().EnablePabrik then
+            if not ShouldStop() then
                 local seenY = {}
                 local yList = {}
                 for _, tile in ipairs(plantedTiles) do
@@ -927,7 +928,7 @@ local mainCoro = coroutine.create(function()
                     end
                     cx = targetX
                 end
-                if getgenv().EnablePabrik then
+                if not ShouldStop() then
                     walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
                 end
             end
@@ -966,14 +967,14 @@ local mainCoro = coroutine.create(function()
                     task.wait(1); waited = waited + 1
                 end
                 local updateCount = 0
-                while getgenv().EnablePabrik and getgenv().PabrikIsRunning do
+                while getgenv().PabrikIsRunning do
                     -- hitung 60 detik tapi skip waktu pause
                     local counted = 0
-                    while counted < 60 and getgenv().EnablePabrik and getgenv().PabrikIsRunning do
+                    while counted < 60 and getgenv().PabrikIsRunning do
                         task.wait(1)
                         if not getgenv().PabrikPaused then counted = counted + 1 end
                     end
-                    if not getgenv().EnablePabrik or not getgenv().PabrikIsRunning then break end
+                    if not getgenv().PabrikIsRunning then break end
                     updateCount = updateCount + 1
                     local elapsed = os.time() - breakStart
                     EditWebhook(msgIdBreak,
@@ -1006,11 +1007,13 @@ local mainCoro = coroutine.create(function()
             -- ════════════════════════════════
             if ShouldStop() then return end
 
+            local seedSebelumDrop = GetItemAmountByID(getgenv().SelectedSeed)
             local msgIdDrop = nil
             SendWebhook(
                 "📦 **[FASE 5 — DROP]** Siklus #"..cycleNum.." ⏳\n"..
                 "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                "🌿 Seed sekarang: `"..GetItemAmountByID(getgenv().SelectedSeed).."x`  |  Keep: `"..getgenv().KeepSeedAmt.."`",
+                "🌿 Seed: `"..seedSebelumDrop.."x`  |  Keep: `"..getgenv().KeepSeedAmt.."`\n"..
+                "📤 Akan drop: `"..(math.max(0, seedSebelumDrop - getgenv().KeepSeedAmt)).."x`",
                 function(id) msgIdDrop = id end
             )
 
@@ -1032,7 +1035,9 @@ local mainCoro = coroutine.create(function()
             EditWebhook(msgIdDrop,
                 "📦 **[FASE 5 — DROP]** Siklus #"..getgenv().CycleCount.." ✅ Selesai\n"..
                 "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                "🌱 Drop: `"..droppedThisCycle.."x`  |  Total: `"..getgenv().TotalDropAllTime.."x`"
+                "📤 Seed di-drop: `"..droppedThisCycle.."x`\n"..
+                "🌿 Seed tersisa: `"..GetItemAmountByID(getgenv().SelectedSeed).."x`\n"..
+                "📦 Total all time: `"..getgenv().TotalDropAllTime.."x`"
             )
             EditWebhook(msgIdSiklus,
                 "🚀 **[SIKLUS #"..getgenv().CycleCount.."]** ✅ Selesai\n"..ringkasan
@@ -1050,7 +1055,10 @@ local mainCoro = coroutine.create(function()
                 warn("[Pabrik] Error:", err)
             end
         end
-        getgenv().PabrikIsRunning = false
+        -- Jangan reset PabrikIsRunning kalau lagi pause (nanti loop akan mulai siklus baru)
+        if not getgenv().PabrikPaused then
+            getgenv().PabrikIsRunning = false
+        end
         end
     end
 end)
@@ -1150,6 +1158,7 @@ local uiOk, uiErr = pcall(function()
                 -- Pause OFF → resume, UI Enable → ON
                 getgenv().EnablePabrik = true
                 getgenv().PabrikPaused = false
+                getgenv().PabrikIsRunning = false  -- reset supaya siklus baru bisa mulai kalau yang lama sudah selesai
                 _toggleLock = true
                 pcall(function() enableToggleRef:Set(true) end)
                 _toggleLock = false
