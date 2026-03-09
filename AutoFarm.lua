@@ -798,5 +798,5 @@ FarmTab:CreateButton({
 -- ============================================================
 -- LOADED NOTIFICATION
 -- ============================================================
-Rayfield:Notify({Title="⛏️ Auto Farm + Auto Drop", Content="Script loaded!\n1. Pilih block/item\n2. Pilih tile\n3. Enable farm atau drop", Duration=7})
-print("✅ [AutoFarm+Drop] Siap digunakan.")
+Rayfield:Notify({Title="Welcome To RaijnScript", Content="Script loaded!\n1. Silahkan Pilih AutoFarm yang mana\n2.", Duration=7})
+print("✅ Script Siap digunakan.")
