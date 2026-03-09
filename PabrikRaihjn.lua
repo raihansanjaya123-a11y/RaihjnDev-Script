@@ -951,6 +951,97 @@ local mainCoro = coroutine.create(function()
             )
 
             -- ════════════════════════════════
+            -- FASE 3B: SWEEP
+            -- ════════════════════════════════
+            if ShouldStop() then return end
+
+            -- Hitung jumlah baris unik untuk webhook
+            local sweepYList = {}
+            local sweepSeen = {}
+            for _, tile in ipairs(plantedTiles) do
+                if not sweepSeen[tile.Y] then sweepSeen[tile.Y]=true; table.insert(sweepYList, tile.Y) end
+            end
+
+            local msgIdSweep = nil
+            SendWebhook(
+                "🧹 **[FASE 3B — SWEEP]** Siklus #"..cycleNum.." ⏳\n"..
+                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                "📍 Baris: `"..#sweepYList.."x`",
+                function(id) msgIdSweep = id end
+            )
+
+            if not ShouldStop() then
+                local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
+                table.sort(sweepYList, function(a,b) return farmGoUp and (a>b) or (a<b) end)
+
+                local cx, cy = GetMyPosition()
+                -- Arah X dari toggle awal, bukan dari posisi saat sweep
+                local goRight = getgenv().SweepGoRight ~= nil and getgenv().SweepGoRight
+                    or (cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2)
+
+                for _, gy in ipairs(sweepYList) do
+                    if ShouldStop() then break end
+
+                    -- Pindah Y pakai safeX
+                    if cy ~= gy then
+                        walkToGridSafe(cx, gy)
+                        cx, cy = GetMyPosition()
+                    end
+
+                    -- Tentukan targetX berdasarkan arah zigzag sekarang
+                    local targetX = goRight and getgenv().PabrikEndX or getgenv().PabrikStartX
+                    local xstep   = goRight and 1 or -1
+
+                    -- Sweep X dengan blink detection
+                    local gx = cx
+                    local lastGx = nil
+                    local blinkCount = 0
+
+                    while true do
+                        if ShouldStop() then break end
+                        if xstep > 0 and gx > targetX then break end
+                        if xstep < 0 and gx < targetX then break end
+
+                        SetHitBoxPos(gx, gy)
+                        WaitIfPaused()
+                        task.wait(getgenv().StepDelay)
+
+                        -- Cek apakah posisi actual berubah
+                        local ax, _ = GetMyPosition()
+                        if ax == lastGx then
+                            blinkCount = blinkCount + 1
+                            if blinkCount >= 3 then
+                                -- Blink loop terdeteksi → stop sweep tile ini, walkToGrid paksa ke targetX
+                                print("[Sweep] Blink terdeteksi di X"..gx.." Y"..gy..", walkToGrid paksa")
+                                walkToGrid(targetX, gy)
+                                gx = targetX
+                                blinkCount = 0
+                                break
+                            end
+                        else
+                            blinkCount = 0
+                        end
+                        lastGx = ax
+
+                        gx = gx + xstep
+                    end
+
+                    cx = targetX
+                    -- Balik arah untuk baris berikutnya (zigzag)
+                    goRight = not goRight
+                end
+
+                if not ShouldStop() then
+                    walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
+                end
+            end
+
+            EditWebhook(msgIdSweep,
+                "🧹 **[FASE 3B — SWEEP]** Siklus #"..cycleNum.." ✅ Selesai\n"..
+                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
+            )
+
+            -- ════════════════════════════════
             -- FASE 4: BREAK
             -- ════════════════════════════════
             if ShouldStop() then return end
@@ -1173,6 +1264,11 @@ local uiOk, uiErr = pcall(function()
                 getgenv().PabrikPaused = false
                 pcall(function() pauseToggleRef:Set(false) end)
                 getgenv().PabrikStartTime = os.time()
+                -- Detect arah sweep X dari posisi sekarang
+                local cx, _ = GetMyPosition()
+                local mid = (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2
+                getgenv().SweepGoRight = cx <= mid
+                print("[Pabrik] Start posisi X:"..cx.." → SweepGoRight:", getgenv().SweepGoRight)
                 SendWebhook(
                     "✅ **[PABRIK DINYALAKAN]**\n"..
                     "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
