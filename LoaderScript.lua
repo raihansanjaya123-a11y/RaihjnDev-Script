@@ -257,6 +257,38 @@ WebhookTab:CreateButton({
     end,
 })
 
+WebhookTab:CreateButton({
+    Name="📡 Ping Server",
+    Callback=function()
+        if not getgenv().WebhookURL or getgenv().WebhookURL=="" then
+            Rayfield:Notify({Title="Webhook", Content="Isi URL dulu!", Duration=3}); return
+        end
+        task.spawn(function()
+            local stats = game:GetService("Stats")
+            local ping  = stats and stats.Network and stats.Network.ServerStatsItem
+                and stats.Network.ServerStatsItem["Data Ping"]
+                and math.floor(stats.Network.ServerStatsItem["Data Ping"]:GetValue()) or nil
+            local pingStr = ping and (ping.."ms") or "N/A"
+            local pingEmoji = ping == nil and "❓"
+                or ping < 80  and "🟢"
+                or ping < 150 and "🟡"
+                or "🔴"
+            local elapsed = os.time() - (getgenv().PabrikStartTime or os.time())
+            local h = math.floor(elapsed/3600)
+            local m = math.floor((elapsed%3600)/60)
+            local s = elapsed%60
+            getgenv().SendWebhook(
+                "📡 **[PING CHECK]**\n"..
+                "👤 `"..LP.Name.."`  |  🎮 `"..game.Name.."`\n"..
+                pingEmoji.." Ping: `"..pingStr.."`\n"..
+                "⏱️ Uptime: `"..string.format("%02d:%02d:%02d",h,m,s).."`\n"..
+                "🏭 Siklus: `"..(getgenv().CycleCount or 0).."`  |  📦 Drop: `"..(getgenv().TotalDropAllTime or 0).."x`"
+            )
+            Rayfield:Notify({Title="📡 Ping", Content=pingEmoji.." "..pingStr, Duration=4})
+        end)
+    end,
+})
+
 WebhookTab:CreateSection("Stats Pabrik")
 
 WebhookTab:CreateButton({
