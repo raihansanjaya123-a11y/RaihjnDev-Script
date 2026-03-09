@@ -225,77 +225,74 @@ local function SetHitBoxPos(x, y)
     end
 end
 
--- walkToGrid: jalan step by step X dulu baru Y, anti blink dalam satu baris Y
+-- walkToGrid: jalan step by step dalam ghost state supaya tidak blink
 local function walkToGrid(targetX, targetY)
+    local char = LP.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    -- Anchor sementara supaya server tidak override
+    local wasAnchored = hrp.Anchored
+    hrp.Anchored = true
+
     local cx, cy = GetMyPosition()
     while cx ~= targetX or cy ~= targetY do
-        if not getgenv().EnablePabrik then break end
         if cx ~= targetX then cx = cx + (targetX > cx and 1 or -1)
         else cy = cy + (targetY > cy and 1 or -1) end
         SetHitBoxPos(cx, cy)
+        -- Update HoldCFrame kalau lagi ghosting supaya heartbeat tidak fight balik
+        if getgenv().IsGhosting then
+            getgenv().HoldCFrame = hrp.CFrame
+        end
         task.wait(getgenv().StepDelay)
     end
     SetHitBoxPos(targetX, targetY)
+    if getgenv().IsGhosting then
+        getgenv().HoldCFrame = hrp.CFrame
+    end
+
+    hrp.Anchored = wasAnchored
 end
 
--- walkToGridSafe: dipakai saat PINDAH Y (Y berbeda dari posisi sekarang)
--- Strategi: deteksi posisi X ujung zigzag sesuai baris saat ini (X1 atau X99),
--- jalan ke sana dulu, baru pindah Y step by step sambil paksa X tetap di ujung itu.
--- Ujung X1/X99 adalah posisi aman (tidak ada penghalang di area naik/turun).
+-- walkToGridSafe: pindah Y langsung tanpa muter via safeX, dalam ghost state
 local function walkToGridSafe(targetX, targetY)
+    local char = LP.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local wasAnchored = hrp.Anchored
+    hrp.Anchored = true
+
     local cx, cy = GetMyPosition()
 
+    -- Pindah Y dulu step by step di X sekarang
     if cy ~= targetY then
-        -- Tentukan safeX: ujung X sesuai posisi zigzag saat ini
-        -- Hitung baris sekarang berdasarkan Y (baris ke-N dari StartY)
-        local startY  = getgenv().PabrikStartY
-        local endY    = getgenv().PabrikEndY
-        local gap     = getgenv().YGap or 2
-        local x1      = getgenv().PabrikStartX
-        local x2      = getgenv().PabrikEndX
-        -- Hitung row index (1-based) dari Y sekarang
-        local rowIdx
-        if startY <= endY then
-            rowIdx = math.floor((cy - startY) / gap) + 1
-        else
-            rowIdx = math.floor((startY - cy) / gap) + 1
-        end
-        -- Row ganjil: jalan x1→x2, selesai di x2 → safeX = x2
-        -- Row genap: jalan x2→x1, selesai di x1 → safeX = x1
-        local safeX = (rowIdx % 2 == 1) and x2 or x1
-
-        -- Langkah 1: jalan ke safeX di Y sekarang
-        if cx ~= safeX then
-            walkToGrid(safeX, cy)
-        end
-        cx = safeX
-
-        -- Langkah 2: pindah Y satu per satu, paksa X tetap di safeX tiap step
         local stepY = targetY > cy and 1 or -1
         while cy ~= targetY do
-            if not getgenv().EnablePabrik then break end
             cy = cy + stepY
-            SetHitBoxPos(safeX, cy)
+            SetHitBoxPos(cx, cy)
+            if getgenv().IsGhosting then getgenv().HoldCFrame = hrp.CFrame end
             task.wait(getgenv().StepDelay)
         end
-
-        -- Langkah 3: verifikasi Y sudah benar (retry kalau blink)
-        for _ = 1, 5 do
-            local _, actY = GetMyPosition()
-            if actY == targetY then break end
-            SetHitBoxPos(safeX, targetY)
-            task.wait(0.1)
-        end
-        cx = safeX
     end
 
-    -- Langkah 4: jalan ke targetX di Y yang sudah benar
+    -- Pindah X kalau perlu
     if cx ~= targetX then
-        walkToGrid(targetX, targetY)
-    else
-        SetHitBoxPos(targetX, targetY)
-        task.wait(0.05)
+        local stepX = targetX > cx and 1 or -1
+        while cx ~= targetX do
+            cx = cx + stepX
+            SetHitBoxPos(cx, cy)
+            if getgenv().IsGhosting then getgenv().HoldCFrame = hrp.CFrame end
+            task.wait(getgenv().StepDelay)
+        end
     end
+
+    SetHitBoxPos(targetX, targetY)
+    if getgenv().IsGhosting then getgenv().HoldCFrame = hrp.CFrame end
+
+    hrp.Anchored = wasAnchored
 end
 
 local function EnsurePosition(targetX, targetY)
