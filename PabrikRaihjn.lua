@@ -77,7 +77,7 @@ end
 
 -- Pause: berhenti di tempat, tunggu sampai di-resume atau di-stop
 local function WaitIfPaused()
-    while getgenv().PabrikPaused and getgenv().EnablePabrik do
+    while getgenv().PabrikPaused do
         if getgenv().PabrikRestartCycle then
             error("__RESTART__")
         end
@@ -1114,19 +1114,26 @@ local uiOk, uiErr = pcall(function()
     local pauseToggleRef = nil
     local enableToggleRef = nil
 
+    local _toggleLock = false
+
     pauseToggleRef = MainTab:CreateToggle({
         Name="⏸️ Pause Pabrik", CurrentValue=false, Flag="PausePabrikToggle",
         Callback=function(v)
+            if _toggleLock then return end
             if v and not getgenv().EnablePabrik then
-                getgenv().PabrikPaused = false
+                _toggleLock = true
                 pcall(function() pauseToggleRef:Set(false) end)
+                _toggleLock = false
                 Rayfield:Notify({Title="⚠️", Content="Enable Pabrik dulu sebelum pause.", Duration=2})
                 return
             end
             getgenv().PabrikPaused = v
             if v then
-                -- Pause ON → Enable toggle di UI jadi OFF (bot tetap jalan di background)
+                -- Pause ON → set EnablePabrik false (bot freeze), UI Enable → OFF
+                getgenv().EnablePabrik = false
+                _toggleLock = true
                 pcall(function() enableToggleRef:Set(false) end)
+                _toggleLock = false
                 Rayfield:Notify({Title="⏸️ Paused", Content="Bot berhenti di titik ini.", Duration=3})
                 SendWebhook(
                     "⏸️ **[PABRIK DIPAUSE]**\n"..
@@ -1134,8 +1141,12 @@ local uiOk, uiErr = pcall(function()
                     "🏭 Siklus: `"..getgenv().CycleCount.."`  |  Lanjut saat di-resume"
                 )
             else
-                -- Pause OFF → Enable toggle di UI balik ON
+                -- Pause OFF → resume, UI Enable → ON
+                getgenv().EnablePabrik = true
+                getgenv().PabrikPaused = false
+                _toggleLock = true
                 pcall(function() enableToggleRef:Set(true) end)
+                _toggleLock = false
                 Rayfield:Notify({Title="▶️ Resumed", Content="Bot lanjut dari titik terakhir.", Duration=3})
                 SendWebhook(
                     "▶️ **[PABRIK DIRESUMED]**\n"..
@@ -1148,46 +1159,36 @@ local uiOk, uiErr = pcall(function()
     enableToggleRef = MainTab:CreateToggle({
         Name="Enable Pabrik", CurrentValue=false, Flag="EnablePabrikToggle",
         Callback=function(v)
+            if _toggleLock then return end
             if v then
-                -- Enable ON → pastikan pause off, bot mulai/lanjut
-                if getgenv().PabrikPaused then
-                    -- Ini artinya user unpause lewat toggle Enable
-                    getgenv().PabrikPaused = false
-                    pcall(function() pauseToggleRef:Set(false) end)
-                    Rayfield:Notify({Title="▶️ Resumed", Content="Bot lanjut dari titik terakhir.", Duration=3})
-                    SendWebhook(
-                        "▶️ **[PABRIK DIRESUMED]**\n"..
-                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
-                    )
-                else
-                    -- Fresh start
-                    getgenv().EnablePabrik = true
-                    getgenv().PabrikStartTime = os.time()
-                    SendWebhook(
-                        "✅ **[PABRIK DINYALAKAN]**\n"..
-                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                        "🌿 Seed: `"..getgenv().SelectedSeed.."`  |  🧱 Block: `"..getgenv().SelectedBlock.."`"
-                    )
-                    print("[Pabrik] Enable: true | Timer mulai")
-                end
+                -- Enable ON → fresh start, pastikan pause off
+                getgenv().EnablePabrik = true
+                getgenv().PabrikPaused = false
+                getgenv().PabrikStartTime = os.time()
+                _toggleLock = true
+                pcall(function() pauseToggleRef:Set(false) end)
+                _toggleLock = false
+                SendWebhook(
+                    "✅ **[PABRIK DINYALAKAN]**\n"..
+                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                    "🌿 Seed: `"..getgenv().SelectedSeed.."`  |  🧱 Block: `"..getgenv().SelectedBlock.."`"
+                )
+                print("[Pabrik] Enable: true")
             else
-                -- Enable OFF: cek apakah ini dari pause (jangan matiin beneran)
-                if getgenv().PabrikPaused then
-                    -- Toggle diset false oleh pause callback, jangan lakukan apa-apa
-                    return
-                end
-                -- Mematikan beneran
+                -- Enable OFF → stop beneran
                 getgenv().EnablePabrik = false
                 getgenv().PabrikPaused = false
                 getgenv().PabrikIsRunning = false
+                _toggleLock = true
                 pcall(function() pauseToggleRef:Set(false) end)
+                _toggleLock = false
                 SendWebhook(
                     "🛑 **[PABRIK DIMATIKAN MANUAL]**\n"..
                     "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
                     "🏭 Siklus selesai: `"..getgenv().CycleCount.."`\n"..
                     "📦 Total drop: `"..getgenv().TotalDropAllTime.."x`"
                 )
-                print("[Pabrik] Enable: false | Pause di-reset")
+                print("[Pabrik] Enable: false")
             end
         end,
     })
