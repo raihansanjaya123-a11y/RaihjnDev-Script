@@ -195,24 +195,6 @@ local function SetHitBoxPos(x, y)
     if not h then return end
     local pos = Vector3.new(x * getgenv().GridSize, y * getgenv().GridSize, h.Position.Z)
     h.CFrame = CFrame.new(pos)
-
-    -- Sync HRP supaya tidak blink saat karakter jatuh/posisi beda
-    pcall(function()
-        local char = LP.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp and not hrp.Anchored then
-                -- Pertahankan Z asli HRP, hanya paksa X dan Y ikut hitbox
-                local hrpPos = hrp.Position
-                hrp.CFrame = CFrame.new(
-                    Vector3.new(pos.X, pos.Y, hrpPos.Z)
-                )
-                hrp.AssemblyLinearVelocity  = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-            end
-        end
-    end)
-
     if PlayerMovement then
         pcall(function()
             PlayerMovement.Position    = pos
@@ -225,102 +207,83 @@ local function SetHitBoxPos(x, y)
     end
 end
 
--- walkToGrid: jalan step by step dalam ghost state supaya tidak blink
 local function walkToGrid(targetX, targetY)
-    local char = LP.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    -- Anchor sementara supaya server tidak override
-    local wasAnchored = hrp.Anchored
-    hrp.Anchored = true
-
     local cx, cy = GetMyPosition()
-    while cx ~= targetX or cy ~= targetY do
-        if cx ~= targetX then cx = cx + (targetX > cx and 1 or -1)
-        else cy = cy + (targetY > cy and 1 or -1) end
+    -- Geser X dulu di Y sekarang
+    while cx ~= targetX do
+        cx = cx + (targetX > cx and 1 or -1)
         SetHitBoxPos(cx, cy)
-        -- Update HoldCFrame kalau lagi ghosting supaya heartbeat tidak fight balik
-        if getgenv().IsGhosting then
-            getgenv().HoldCFrame = hrp.CFrame
-        end
+        task.wait(getgenv().StepDelay)
+    end
+    -- Geser Y kalau perlu
+    while cy ~= targetY do
+        cy = cy + (targetY > cy and 1 or -1)
+        SetHitBoxPos(cx, cy)
         task.wait(getgenv().StepDelay)
     end
     SetHitBoxPos(targetX, targetY)
-    if getgenv().IsGhosting then
-        getgenv().HoldCFrame = hrp.CFrame
-    end
-
-    hrp.Anchored = wasAnchored
 end
 
--- walkToGridSafe: pindah Y langsung tanpa muter via safeX, dalam ghost state
 local function walkToGridSafe(targetX, targetY)
-    local char = LP.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    local wasAnchored = hrp.Anchored
-    hrp.Anchored = true
-
     local cx, cy = GetMyPosition()
-
-    -- Pindah Y dulu step by step di X sekarang
-    if cy ~= targetY then
-        local stepY = targetY > cy and 1 or -1
-        while cy ~= targetY do
-            cy = cy + stepY
-            SetHitBoxPos(cx, cy)
-            if getgenv().IsGhosting then getgenv().HoldCFrame = hrp.CFrame end
-            task.wait(getgenv().StepDelay)
-        end
+    if cy == targetY then
+        walkToGrid(targetX, targetY)
+        return
     end
 
-    -- Pindah X kalau perlu
-    if cx ~= targetX then
-        local stepX = targetX > cx and 1 or -1
-        while cx ~= targetX do
-            cx = cx + stepX
-            SetHitBoxPos(cx, cy)
-            if getgenv().IsGhosting then getgenv().HoldCFrame = hrp.CFrame end
-            task.wait(getgenv().StepDelay)
-        end
+    -- Pilih safeX terdekat dari posisi sekarang (X1 atau X99)
+    local x1 = getgenv().PabrikStartX
+    local x2 = getgenv().PabrikEndX
+    local safeX = (math.abs(cx - x1) <= math.abs(cx - x2)) and x1 or x2
+
+    -- Step 1: geser X ke safeX dulu
+    while cx ~= safeX do
+        cx = cx + (safeX > cx and 1 or -1)
+        SetHitBoxPos(cx, cy)
+        task.wait(getgenv().StepDelay)
+    end
+    -- Verify di safeX
+    local retryX = 0
+    local actualX, _ = GetMyPosition()
+    while actualX ~= safeX and retryX < 10 do
+        SetHitBoxPos(safeX, cy)
+        task.wait(0.1)
+        actualX, _ = GetMyPosition()
+        retryX = retryX + 1
     end
 
+    -- Step 2: naik/turun Y di safeX
+    local stepY = targetY > cy and 1 or -1
+    while cy ~= targetY do
+        cy = cy + stepY
+        SetHitBoxPos(safeX, cy)
+        task.wait(getgenv().StepDelay)
+    end
+    -- Verify Y
+    local _, actualY = GetMyPosition()
+    local retryY = 0
+    while actualY ~= targetY and retryY < 10 do
+        SetHitBoxPos(safeX, targetY)
+        task.wait(0.1)
+        _, actualY = GetMyPosition()
+        retryY = retryY + 1
+    end
+
+    -- Step 3: geser ke targetX setelah Y confirmed
+    cx = safeX
+    while cx ~= targetX do
+        cx = cx + (targetX > cx and 1 or -1)
+        SetHitBoxPos(cx, targetY)
+        task.wait(getgenv().StepDelay)
+    end
     SetHitBoxPos(targetX, targetY)
-    if getgenv().IsGhosting then getgenv().HoldCFrame = hrp.CFrame end
-
-    hrp.Anchored = wasAnchored
 end
 
 local function EnsurePosition(targetX, targetY)
-    -- Coba walkToGrid ulang sampai posisi bener, bukan teleport paksa
-    local maxRetry = 3
-    for i = 1, maxRetry do
-        task.wait(0.05)
-        local cx, cy = GetMyPosition()
-        if cx == targetX and cy == targetY then break end
-        -- Posisi belum tepat, walk lagi bukan teleport
-        if i < maxRetry then
-            walkToGrid(targetX, targetY)
-        else
-            -- Sudah retry 3x masih beda, baru SetHitBoxPos (last resort)
-            SetHitBoxPos(targetX, targetY)
-        end
+    local cx, cy = GetMyPosition()
+    if cx ~= targetX or cy ~= targetY then
+        SetHitBoxPos(targetX, targetY)
     end
-    -- Zero velocity supaya tidak drift
-    pcall(function()
-        local char = LP.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp and not hrp.Anchored then
-                hrp.AssemblyLinearVelocity  = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-            end
-        end
-    end)
 end
 
 -- ============================================================
@@ -692,7 +655,7 @@ local mainCoro = coroutine.create(function()
             if blockAmtAwal > getgenv().BlockThreshold then
                 print("[Awal] Block banyak ("..blockAmtAwal.."), farm block dulu")
                 if getgenv().CycleCount == 0 then
-                    walkToGrid(getgenv().BreakPosX, getgenv().BreakPosY)
+                    walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
                 else
                     walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
                 end
@@ -920,16 +883,15 @@ local mainCoro = coroutine.create(function()
                 local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
                 table.sort(yList, function(a,b) return farmGoUp and (a>b) or (a<b) end)
 
-                -- Posisi awal dari harvest terakhir
                 local cx, cy = GetMyPosition()
                 for _, gy in ipairs(yList) do
                     if ShouldStop() then break end
-                    -- Pindah Y langsung dari posisi sekarang, tidak perlu via safeX
+                    -- walkToGridSafe pastikan ke safeX dulu, naik/turun Y, verify Y, baru ke targetX
                     if cy ~= gy then
-                        walkToGrid(cx, gy)
-                        cy = gy
+                        walkToGridSafe(cx, gy)
+                        cx, cy = GetMyPosition()
                     end
-                    -- Arah X dari posisi cx sekarang ke ujung berlawanan
+                    -- Sweep X ke ujung berlawanan
                     local targetX = (cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2)
                         and getgenv().PabrikEndX or getgenv().PabrikStartX
                     local xstep = cx < targetX and 1 or -1
