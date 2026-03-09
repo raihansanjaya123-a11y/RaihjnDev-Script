@@ -48,6 +48,7 @@ getgenv().StepDelay      = getgenv().StepDelay      or 0.1
 getgenv().BreakDelay     = getgenv().BreakDelay     or 0.15
 getgenv().TotalDropAllTime = getgenv().TotalDropAllTime or 0
 getgenv().CycleCount       = getgenv().CycleCount       or 0
+getgenv().PabrikPaused     = getgenv().PabrikPaused     or false
 
 -- ============================================================
 -- LOAD MODUL (semua pakai pcall)
@@ -71,6 +72,19 @@ end
 local function EditWebhook(messageId, content)
     if getgenv().EditWebhook then
         getgenv().EditWebhook(messageId, content)
+    end
+end
+
+-- Pause: berhenti di tempat, tunggu sampai di-resume atau di-stop
+local function WaitIfPaused()
+    while getgenv().PabrikPaused and getgenv().EnablePabrik do
+        if getgenv().PabrikRestartCycle then
+            error("__RESTART__")
+        end
+        task.wait(0.5)
+    end
+    if getgenv().PabrikRestartCycle then
+        error("__RESTART__")
     end
 end
 
@@ -730,6 +744,8 @@ local mainCoro = coroutine.create(function()
                     walkToGrid(point.X, point.Y)
                 end
                 lastY = point.Y
+                WaitIfPaused()
+                if not getgenv().EnablePabrik then break end
                 EnsurePosition(point.X, point.Y)
                 if not getgenv().EnablePabrik then break end
 
@@ -741,6 +757,7 @@ local mainCoro = coroutine.create(function()
                 else
                     Doplant(point.X, point.Y, slot)
                     task.wait(getgenv().PlaceDelay)
+                    WaitIfPaused()
                     lastPlantedX = point.X
                     lastPlantedY = point.Y
                     table.insert(plantedTiles, {X=point.X, Y=point.Y})
@@ -810,7 +827,8 @@ local mainCoro = coroutine.create(function()
                 function(id) msgIdWait = id end
             )
 
-            for _ = 1, waitTime do
+            local waitElapsed = 0
+            while waitElapsed < waitTime do
                 if not getgenv().EnablePabrik then
                     EditWebhook(msgIdWait,
                         "⏳ **[FASE 2 — WAIT]** Siklus #"..cycleNum.." 🛑 STOP\n"..
@@ -818,7 +836,18 @@ local mainCoro = coroutine.create(function()
                     )
                     break
                 end
+                WaitIfPaused()
+                if not getgenv().EnablePabrik then break end
+                -- edit update sisa waktu tiap 30 detik
+                if waitElapsed % 30 == 0 and waitElapsed > 0 then
+                    EditWebhook(msgIdWait,
+                        "⏳ **[FASE 2 — WAIT]** Siklus #"..cycleNum.." ⏳\n"..
+                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                        "⏱️ Sisa: `"..(waitTime - waitElapsed).." detik`"
+                    )
+                end
                 task.wait(1)
+                waitElapsed = waitElapsed + 1
             end
 
             EditWebhook(msgIdWait,
@@ -858,6 +887,8 @@ local mainCoro = coroutine.create(function()
                     walkToGrid(point.X, point.Y)
                 end
                 lastHarvestY = point.Y
+                WaitIfPaused()
+                if not getgenv().EnablePabrik then break end
                 EnsurePosition(point.X, point.Y)
                 DoBreak(point.X, point.Y)
             end
@@ -885,6 +916,7 @@ local mainCoro = coroutine.create(function()
                         if xstep > 0 and gx > targetX then break end
                         if xstep < 0 and gx < targetX then break end
                         SetHitBoxPos(gx, gy)
+                        WaitIfPaused()
                         gx = gx + xstep
                     end
                     cx = targetX
@@ -929,7 +961,12 @@ local mainCoro = coroutine.create(function()
                 end
                 local updateCount = 0
                 while getgenv().EnablePabrik and getgenv().PabrikIsRunning do
-                    task.wait(60)
+                    -- hitung 60 detik tapi skip waktu pause
+                    local counted = 0
+                    while counted < 60 and getgenv().EnablePabrik and getgenv().PabrikIsRunning do
+                        task.wait(1)
+                        if not getgenv().PabrikPaused then counted = counted + 1 end
+                    end
                     if not getgenv().EnablePabrik or not getgenv().PabrikIsRunning then break end
                     updateCount = updateCount + 1
                     local elapsed = os.time() - breakStart
@@ -997,7 +1034,16 @@ local mainCoro = coroutine.create(function()
 
             print("[Pabrik] Siklus", getgenv().CycleCount, "selesai!")
         end)
-        if not ok then warn("[Pabrik] Error:", err) end
+        if not ok then
+            if tostring(err):find("__RESTART__") then
+                print("[Pabrik] Restart cycle diminta")
+                getgenv().PabrikRestartCycle = false
+                getgenv().PabrikPaused = false
+                pcall(function() pauseToggleRef:Set(false) end)
+            else
+                warn("[Pabrik] Error:", err)
+            end
+        end
         getgenv().PabrikIsRunning = false
         end
     end
@@ -1065,31 +1111,83 @@ local uiOk, uiErr = pcall(function()
     MainTab:CreateInput({Name="Block Threshold", PlaceholderText="1", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().BlockThreshold=n end end})
 
-    MainTab:CreateToggle({
+    local pauseToggleRef = nil
+    local enableToggleRef = nil
+
+    pauseToggleRef = MainTab:CreateToggle({
+        Name="⏸️ Pause Pabrik", CurrentValue=false, Flag="PausePabrikToggle",
+        Callback=function(v)
+            if v and not getgenv().EnablePabrik then
+                getgenv().PabrikPaused = false
+                pcall(function() pauseToggleRef:Set(false) end)
+                Rayfield:Notify({Title="⚠️", Content="Enable Pabrik dulu sebelum pause.", Duration=2})
+                return
+            end
+            getgenv().PabrikPaused = v
+            if v then
+                -- Pause ON → Enable toggle di UI jadi OFF (bot tetap jalan di background)
+                pcall(function() enableToggleRef:Set(false) end)
+                Rayfield:Notify({Title="⏸️ Paused", Content="Bot berhenti di titik ini.", Duration=3})
+                SendWebhook(
+                    "⏸️ **[PABRIK DIPAUSE]**\n"..
+                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                    "🏭 Siklus: `"..getgenv().CycleCount.."`  |  Lanjut saat di-resume"
+                )
+            else
+                -- Pause OFF → Enable toggle di UI balik ON
+                pcall(function() enableToggleRef:Set(true) end)
+                Rayfield:Notify({Title="▶️ Resumed", Content="Bot lanjut dari titik terakhir.", Duration=3})
+                SendWebhook(
+                    "▶️ **[PABRIK DIRESUMED]**\n"..
+                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
+                )
+            end
+        end,
+    })
+
+    enableToggleRef = MainTab:CreateToggle({
         Name="Enable Pabrik", CurrentValue=false, Flag="EnablePabrikToggle",
         Callback=function(v)
-            getgenv().EnablePabrik = v
             if v then
-                getgenv().PabrikStartTime = os.time()
-                task.spawn(function()
+                -- Enable ON → pastikan pause off, bot mulai/lanjut
+                if getgenv().PabrikPaused then
+                    -- Ini artinya user unpause lewat toggle Enable
+                    getgenv().PabrikPaused = false
+                    pcall(function() pauseToggleRef:Set(false) end)
+                    Rayfield:Notify({Title="▶️ Resumed", Content="Bot lanjut dari titik terakhir.", Duration=3})
+                    SendWebhook(
+                        "▶️ **[PABRIK DIRESUMED]**\n"..
+                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
+                    )
+                else
+                    -- Fresh start
+                    getgenv().EnablePabrik = true
+                    getgenv().PabrikStartTime = os.time()
                     SendWebhook(
                         "✅ **[PABRIK DINYALAKAN]**\n"..
                         "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
                         "🌿 Seed: `"..getgenv().SelectedSeed.."`  |  🧱 Block: `"..getgenv().SelectedBlock.."`"
                     )
-                end)
-                print("[Pabrik] Enable: true | Timer mulai")
+                    print("[Pabrik] Enable: true | Timer mulai")
+                end
             else
+                -- Enable OFF: cek apakah ini dari pause (jangan matiin beneran)
+                if getgenv().PabrikPaused then
+                    -- Toggle diset false oleh pause callback, jangan lakukan apa-apa
+                    return
+                end
+                -- Mematikan beneran
+                getgenv().EnablePabrik = false
+                getgenv().PabrikPaused = false
                 getgenv().PabrikIsRunning = false
-                task.spawn(function()
-                    SendWebhook(
-                        "🛑 **[PABRIK DIMATIKAN MANUAL]**\n"..
-                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                        "🏭 Siklus selesai: `"..getgenv().CycleCount.."`\n"..
-                        "📦 Total drop: `"..getgenv().TotalDropAllTime.."x`"
-                    )
-                end)
-                print("[Pabrik] Enable: false")
+                pcall(function() pauseToggleRef:Set(false) end)
+                SendWebhook(
+                    "🛑 **[PABRIK DIMATIKAN MANUAL]**\n"..
+                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                    "🏭 Siklus selesai: `"..getgenv().CycleCount.."`\n"..
+                    "📦 Total drop: `"..getgenv().TotalDropAllTime.."x`"
+                )
+                print("[Pabrik] Enable: false | Pause di-reset")
             end
         end,
     })
