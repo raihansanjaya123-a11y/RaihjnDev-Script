@@ -806,6 +806,7 @@ local mainCoro = coroutine.create(function()
             -- ════════════════════════════════
             -- FASE 1: PLANT
             -- ════════════════════════════════
+            KillHoverLock()  -- pastikan hover mati sebelum plant
             local msgIdPlant = nil
             SendWebhook(
                 "🌱 **[FASE 1 — PLANT]** Siklus #"..cycleNum.." ⏳\n"..
