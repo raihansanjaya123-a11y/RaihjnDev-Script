@@ -710,7 +710,7 @@ local function DoDropSeedLoop()
     if seedAmt <= getgenv().KeepSeedAmt then return 0 end
 
     local gs = StartGhost()
-    walkToGrid(getgenv().DropPosX, getgenv().DropPosY)
+    walkToGridSafe(getgenv().DropPosX, getgenv().DropPosY)
     task.wait(1.5)
 
     while getgenv().PabrikIsRunning do
@@ -774,17 +774,13 @@ local mainCoro = coroutine.create(function()
             -- CEK AWAL: block sudah banyak
             if blockAmtAwal > getgenv().BlockThreshold then
                 print("[Awal] Block banyak ("..blockAmtAwal.."), farm block dulu")
-                if getgenv().CycleCount == 0 then
-                    walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
-                else
-                    walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
-                end
+                walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
                 task.wait(0.5)
                 DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
                 if ShouldStop() then return end
+                -- Drop seed kalau berlebih, lalu lanjut ke fase plant
                 local d = DoDropSeedLoop()
                 if d > 0 then getgenv().TotalDropAllTime = getgenv().TotalDropAllTime + d end
-                return
             end
 
             -- ════════════════════════════════
