@@ -1149,8 +1149,6 @@ local mainCoro = coroutine.create(function()
                 if not ShouldStop() then
                     walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
                 end
-                -- Baru kill hover setelah sampai di BreakPos
-                KillHoverLock()
             end
 
             EditWebhook(msgIdSweep,
@@ -1162,6 +1160,7 @@ local mainCoro = coroutine.create(function()
             -- FASE 4: BREAK
             -- ════════════════════════════════
             if ShouldStop() then return end
+            KillHoverLock()  -- baru kill hover setelah sampai di BreakPos, sebelum break
             print("[Block] Farm block")
             task.wait(0.3)
 
