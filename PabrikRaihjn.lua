@@ -1117,9 +1117,14 @@ local mainCoro = coroutine.create(function()
                 local cx, cy = GetMyPosition()
                 local goRight = cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2
 
-                -- Sort Y: mulai dari Y terdekat posisi sekarang, arah sesuai farm
+                -- Sort Y: mulai dari Y terdekat posisi sekarang (habis harvest),
+                -- arah balik ke StartY (kebalikan arah harvest)
                 local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
-                table.sort(sweepYList, function(a,b)
+                table.sort(sweepYList, function(a, b)
+                    local da = math.abs(a - cy)
+                    local db = math.abs(b - cy)
+                    if da ~= db then return da < db end
+                    -- kalau jarak sama, arahkan balik ke StartY
                     return farmGoUp and (a < b) or (a > b)
                 end)
 
@@ -1139,7 +1144,7 @@ local mainCoro = coroutine.create(function()
                         end
                     end
 
-                    -- Sweep X zigzag
+                    -- Sweep X zigzag dengan StepDelay biar block sempat di-collect
                     local targetX = goRight and getgenv().PabrikEndX or getgenv().PabrikStartX
                     local xstep   = goRight and 1 or -1
                     local gx = cx
