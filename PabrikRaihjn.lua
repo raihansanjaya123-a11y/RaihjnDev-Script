@@ -374,14 +374,15 @@ local function walkToGridSafe(targetX, targetY)
     while cy ~= targetY do
         cy = cy + stepY
         UpdateHoverLock(safeX, cy)
-        SetHitBoxPosConfirmed(safeX, cy)
-        WaitIfPaused()
+        SetHitBoxPos(safeX, cy)  -- hover sudah handle, tidak perlu Confirmed
         task.wait(getgenv().StepDelay)
     end
-    -- Verify Y sekali
+    -- Verify sekali
+    task.wait(0.05)
     local _, actualY = GetMyPosition()
     if actualY ~= targetY then
-        SetHitBoxPosConfirmed(safeX, targetY)
+        UpdateHoverLock(safeX, targetY)
+        SetHitBoxPos(safeX, targetY)
         task.wait(0.1)
     end
     if not hoverActive then
@@ -775,10 +776,10 @@ local mainCoro = coroutine.create(function()
             if blockAmtAwal > getgenv().BlockThreshold then
                 print("[Awal] Block banyak ("..blockAmtAwal.."), farm block dulu")
                 walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
+                KillHoverLock()  -- normal sebelum break
                 task.wait(0.5)
                 DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
                 if ShouldStop() then return end
-                -- Drop seed kalau berlebih, lalu lanjut ke fase plant
                 local d = DoDropSeedLoop()
                 if d > 0 then getgenv().TotalDropAllTime = getgenv().TotalDropAllTime + d end
             end
