@@ -1118,46 +1118,66 @@ local mainCoro = coroutine.create(function()
                 table.sort(sweepYList, function(a,b) return farmGoUp and (a>b) or (a<b) end)
 
                 local cx, cy = GetMyPosition()
-                -- Arah X dari toggle awal, bukan dari posisi saat sweep
                 local goRight = getgenv().SweepGoRight ~= nil and getgenv().SweepGoRight
                     or (cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2)
 
-                -- Aktifkan hover lock selama sweep (anti gravity saat collect drop)
+                print("[Sweep] YList:", table.concat(sweepYList, ","), "| goRight:", tostring(goRight))
+                print("[Sweep] StartX:", getgenv().PabrikStartX, "EndX:", getgenv().PabrikEndX)
+
+                -- sweepDone: track Y yang sudah di-sweep (terpisah dari sweepSeen)
+                local sweepDone = {}
+
+                -- Aktifkan hover lock selama sweep
                 StartHoverLock(cx, cy)
 
                 for _, gy in ipairs(sweepYList) do
                     if ShouldStop() then break end
                     repeat
 
-                    -- Skip kalau Y ini sudah di-sweep saat jalan ke Y sebelumnya
-                    if sweepSeen[gy] == "done" then
+                    -- Skip kalau Y ini sudah dilewati saat pindah Y sebelumnya
+                    if sweepDone[gy] then
+                        print("[Sweep] Skip Y"..gy.." (sudah dilewati)")
                         goRight = not goRight
-                        break  -- skip ke iterasi berikutnya
+                        break
                     end
 
-                    -- Pindah Y pakai safeX — hover tetap aktif (Opsi A)
+                    -- Pindah Y pakai safeX — hover tetap aktif
                     if cy ~= gy then
-                        -- Tandai semua Y yang dilewati sebagai "done"
                         local stepY = gy > cy and 1 or -1
+                        -- Mark Y yang dilewati
                         local passY = cy + stepY
                         while passY ~= gy do
-                            if sweepSeen[passY] ~= "done" then
-                                sweepSeen[passY] = "done"
-                                print("[Sweep] Y"..passY.." di-skip (dilewati saat pindah ke Y"..gy..")")
-                            end
+                            sweepDone[passY] = true
+                            print("[Sweep] Y"..passY.." di-mark (dilewati ke Y"..gy..")")
                             passY = passY + stepY
                         end
-                        walkToGridSafe(cx, gy)
-                        cx, cy = GetMyPosition()
-                        UpdateHoverLock(cx, cy)
+                        -- Geser ke safeX dulu
+                        local x1 = getgenv().PabrikStartX
+                        local x2 = getgenv().PabrikEndX
+                        local safeX = (math.abs(cx - x1) <= math.abs(cx - x2)) and x1 or x2
+                        while cx ~= safeX do
+                            cx = cx + (safeX > cx and 1 or -1)
+                            UpdateHoverLock(cx, cy)
+                            SetHitBoxPos(cx, cy)
+                            task.wait(getgenv().StepDelay)
+                        end
+                        -- Turun/naik Y dengan hover
+                        while cy ~= gy do
+                            cy = cy + stepY
+                            UpdateHoverLock(safeX, cy)
+                            SetHitBoxPos(safeX, cy)
+                            task.wait(getgenv().StepDelay)
+                        end
+                        cx = safeX
                     end
-                    sweepSeen[gy] = "done"
+                    sweepDone[gy] = true
 
-                    -- Tentukan targetX berdasarkan arah zigzag sekarang
+                    -- Tentukan targetX berdasarkan arah zigzag
                     local targetX = goRight and getgenv().PabrikEndX or getgenv().PabrikStartX
                     local xstep   = goRight and 1 or -1
+                    print("[Sweep] Sweep Y"..gy.." dari X"..cx.." ke X"..targetX.." goRight:"..tostring(goRight))
 
-                    -- Sweep X dengan blink detection + hover update
+                    -- Sweep X dengan hover update
                     local gx = cx
                     local lastGx = nil
                     local blinkCount = 0
@@ -1169,14 +1189,13 @@ local mainCoro = coroutine.create(function()
 
                         UpdateHoverLock(gx, gy)
                         SetHitBoxPos(gx, gy)
-                        WaitIfPaused()
                         task.wait(getgenv().StepDelay)
 
                         local ax, _ = GetMyPosition()
                         if ax == lastGx then
                             blinkCount = blinkCount + 1
                             if blinkCount >= 3 then
-                                print("[Sweep] Blink terdeteksi di X"..gx.." Y"..gy..", walkToGrid paksa")
+                                print("[Sweep] Blink di X"..gx.." Y"..gy)
                                 walkToGrid(targetX, gy)
                                 gx = targetX
                                 blinkCount = 0
@@ -1195,9 +1214,9 @@ local mainCoro = coroutine.create(function()
                     until true
                 end
 
-                -- Hover tetap aktif saat jalan ke BreakPos
+                -- Jalan ke BreakPos, hover kill setelah sampai Y
                 if not ShouldStop() then
-                    walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
+                    walkToPlantPos(getgenv().BreakPosX, getgenv().BreakPosY)
                 end
             end
 
