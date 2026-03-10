@@ -232,6 +232,103 @@ local function SetHitBoxPosConfirmed(x, y)
     return false
 end
 
+-- ============================================================
+-- HOVER LOCK (anti gravity saat naik Y & sweep)
+-- Opsi A: Hover tidak pernah dilepas selama movement Y aktif
+-- ============================================================
+local hoverLockConn = nil
+local hoverLockX    = 0
+local hoverLockY    = 0
+local hoverActive   = false
+
+local function StartHoverLock(gx, gy)
+    hoverLockX = gx
+    hoverLockY = gy
+    hoverActive = true
+    if hoverLockConn then return end
+    hoverLockConn = RunService.Heartbeat:Connect(function()
+        if not hoverActive then return end
+        local h = GetMyHitbox()
+        if not h then return end
+        local pos = Vector3.new(hoverLockX * getgenv().GridSize, hoverLockY * getgenv().GridSize, h.Position.Z)
+        local cf  = CFrame.new(pos)
+        getgenv().HoldCFrame = cf
+        getgenv().IsGhosting = true
+        pcall(function()
+            h.CFrame = cf
+            h.AssemblyLinearVelocity  = Vector3.zero
+            h.AssemblyAngularVelocity = Vector3.zero
+        end)
+        local char = LP.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then pcall(function()
+                hrp.CFrame = CFrame.new(Vector3.new(pos.X, pos.Y, hrp.Position.Z))
+                hrp.AssemblyLinearVelocity  = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end) end
+        end
+        if PlayerMovement then pcall(function()
+            PlayerMovement.Position    = pos
+            PlayerMovement.OldPosition = pos
+            PlayerMovement.VelocityX   = 0
+            PlayerMovement.VelocityY   = 0
+            PlayerMovement.VelocityZ   = 0
+            PlayerMovement.Grounded    = false
+            PlayerMovement.Jumping     = false
+        end) end
+    end)
+end
+
+local function UpdateHoverLock(gx, gy)
+    hoverLockX = gx
+    hoverLockY = gy
+end
+
+local function StopHoverLock()
+    local h = GetMyHitbox()
+    if h then
+        local pos = Vector3.new(hoverLockX * getgenv().GridSize, hoverLockY * getgenv().GridSize, h.Position.Z)
+        pcall(function()
+            h.CFrame = CFrame.new(pos)
+            h.AssemblyLinearVelocity  = Vector3.zero
+            h.AssemblyAngularVelocity = Vector3.zero
+        end)
+        local char = LP.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then pcall(function()
+                hrp.CFrame = CFrame.new(Vector3.new(pos.X, pos.Y, hrp.Position.Z))
+                hrp.AssemblyLinearVelocity  = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end) end
+        end
+        if PlayerMovement then pcall(function()
+            PlayerMovement.Position    = pos
+            PlayerMovement.OldPosition = pos
+            PlayerMovement.VelocityX   = 0
+            PlayerMovement.VelocityY   = 0
+            PlayerMovement.VelocityZ   = 0
+            PlayerMovement.Grounded    = false
+        end) end
+    end
+    hoverActive = false
+end
+
+local function KillHoverLock()
+    hoverActive = false
+    if hoverLockConn then
+        hoverLockConn:Disconnect()
+        hoverLockConn = nil
+    end
+    getgenv().IsGhosting = false
+    getgenv().HoldCFrame = nil
+    if PlayerMovement then pcall(function()
+        PlayerMovement.Grounded = true
+        PlayerMovement.VelocityY = 0
+    end) end
+end
+
 local function walkToGrid(targetX, targetY)
     local cx, cy = GetMyPosition()
     while cx ~= targetX do
@@ -513,108 +610,6 @@ local function StopGhost(state)
         PlayerMovement.Position = state.cframe.Position
         PlayerMovement.VelocityX=0; PlayerMovement.VelocityY=0
         PlayerMovement.VelocityZ=0; PlayerMovement.Grounded=true
-    end) end
-end
-
--- ============================================================
--- HOVER LOCK (anti gravity saat naik Y & sweep)
--- Opsi A: Hover tidak pernah dilepas selama movement Y aktif
--- ============================================================
-local hoverLockConn = nil
-local hoverLockX    = 0
-local hoverLockY    = 0
-local hoverActive   = false
-
-local function StartHoverLock(gx, gy)
-    hoverLockX = gx
-    hoverLockY = gy
-    hoverActive = true
-    if hoverLockConn then return end  -- sudah jalan, cukup update target
-    hoverLockConn = RunService.Heartbeat:Connect(function()
-        if not hoverActive then return end
-        local h = GetMyHitbox()
-        if not h then return end
-        local pos = Vector3.new(hoverLockX * getgenv().GridSize, hoverLockY * getgenv().GridSize, h.Position.Z)
-        local cf  = CFrame.new(pos)
-        getgenv().HoldCFrame = cf
-        getgenv().IsGhosting = true
-        pcall(function()
-            h.CFrame = cf
-            h.AssemblyLinearVelocity  = Vector3.zero
-            h.AssemblyAngularVelocity = Vector3.zero
-        end)
-        local char = LP.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then pcall(function()
-                hrp.CFrame = CFrame.new(Vector3.new(pos.X, pos.Y, hrp.Position.Z))
-                hrp.AssemblyLinearVelocity  = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-            end) end
-        end
-        if PlayerMovement then pcall(function()
-            PlayerMovement.Position    = pos
-            PlayerMovement.OldPosition = pos
-            PlayerMovement.VelocityX   = 0
-            PlayerMovement.VelocityY   = 0
-            PlayerMovement.VelocityZ   = 0
-            PlayerMovement.Grounded    = false
-            PlayerMovement.Jumping     = false
-        end) end
-    end)
-end
-
-local function UpdateHoverLock(gx, gy)
-    hoverLockX = gx
-    hoverLockY = gy
-end
-
--- StopHoverLock: pause hover tapi TIDAK disconnect
--- Posisi saat ini di-commit dulu sebelum pause
-local function StopHoverLock()
-    -- Update target ke posisi sekarang
-    local h = GetMyHitbox()
-    if h then
-        local pos = Vector3.new(hoverLockX * getgenv().GridSize, hoverLockY * getgenv().GridSize, h.Position.Z)
-        pcall(function()
-            h.CFrame = CFrame.new(pos)
-            h.AssemblyLinearVelocity  = Vector3.zero
-            h.AssemblyAngularVelocity = Vector3.zero
-        end)
-        local char = LP.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then pcall(function()
-                hrp.CFrame = CFrame.new(Vector3.new(pos.X, pos.Y, hrp.Position.Z))
-                hrp.AssemblyLinearVelocity  = Vector3.zero
-                hrp.AssemblyAngularVelocity = Vector3.zero
-            end) end
-        end
-        if PlayerMovement then pcall(function()
-            PlayerMovement.Position    = pos
-            PlayerMovement.OldPosition = pos
-            PlayerMovement.VelocityX   = 0
-            PlayerMovement.VelocityY   = 0
-            PlayerMovement.VelocityZ   = 0
-            PlayerMovement.Grounded    = false  -- tetap false, jangan lepas gravity dulu
-        end) end
-    end
-    -- Pause hover (tidak disconnect, tinggal set hoverActive = false)
-    hoverActive = false
-end
-
--- KillHoverLock: benar-benar matikan hover (dipanggil saat script stop)
-local function KillHoverLock()
-    hoverActive = false
-    if hoverLockConn then
-        hoverLockConn:Disconnect()
-        hoverLockConn = nil
-    end
-    getgenv().IsGhosting = false
-    getgenv().HoldCFrame = nil
-    if PlayerMovement then pcall(function()
-        PlayerMovement.Grounded = true
-        PlayerMovement.VelocityY = 0
     end) end
 end
 
