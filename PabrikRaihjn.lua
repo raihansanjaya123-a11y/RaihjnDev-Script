@@ -407,6 +407,43 @@ local function EnsurePosition(targetX, targetY)
     end
 end
 
+-- walkToPlantPos: pindah Y pakai hover lalu langsung kill
+-- Dipakai di fase plant supaya tidak ada hover sisa saat nanam
+local function walkToPlantPos(targetX, targetY)
+    local cx, cy = GetMyPosition()
+    if cy == targetY then
+        walkToGrid(targetX, targetY)
+        return
+    end
+    local x1 = getgenv().PabrikStartX
+    local x2 = getgenv().PabrikEndX
+    local safeX = (math.abs(cx - x1) <= math.abs(cx - x2)) and x1 or x2
+    -- Step 1: geser ke safeX
+    while cx ~= safeX do
+        cx = cx + (safeX > cx and 1 or -1)
+        SetHitBoxPos(cx, cy)
+        task.wait(getgenv().StepDelay)
+    end
+    -- Step 2: naik/turun Y pakai hover
+    local stepY = targetY > cy and 1 or -1
+    StartHoverLock(safeX, cy)
+    while cy ~= targetY do
+        cy = cy + stepY
+        UpdateHoverLock(safeX, cy)
+        SetHitBoxPos(safeX, cy)
+        task.wait(getgenv().StepDelay)
+    end
+    -- Kill hover langsung setelah Y sampai
+    KillHoverLock()
+    -- Step 3: geser ke targetX
+    while cx ~= targetX do
+        cx = cx + (targetX > cx and 1 or -1)
+        SetHitBoxPos(cx, targetY)
+        task.wait(getgenv().StepDelay)
+    end
+    SetHitBoxPos(targetX, targetY)
+end
+
 -- ============================================================
 -- DETEKSI BLOCK PENGHALANG (dinonaktifkan — CAW tidak pakai)
 -- ============================================================
@@ -856,12 +893,11 @@ local mainCoro = coroutine.create(function()
                 end
 
                 if lastY ~= nil and point.Y ~= lastY then
-                    walkToGridSafe(point.X, point.Y)
+                    walkToPlantPos(point.X, point.Y)
                 else
                     walkToGrid(point.X, point.Y)
                 end
                 lastY = point.Y
-                WaitIfPaused()
                 if ShouldStop() then break end
                 EnsurePosition(point.X, point.Y)
                 if ShouldStop() then break end
@@ -874,7 +910,6 @@ local mainCoro = coroutine.create(function()
                 else
                     Doplant(point.X, point.Y, slot)
                     task.wait(getgenv().PlaceDelay)
-                    WaitIfPaused()
                     lastPlantedX = point.X
                     lastPlantedY = point.Y
                     table.insert(plantedTiles, {X=point.X, Y=point.Y})
@@ -892,7 +927,7 @@ local mainCoro = coroutine.create(function()
                             if not retrySlot then
                                 table.insert(stillSkipped, sk)
                             else
-                                if sk.Y ~= lastY then walkToGridSafe(sk.X, sk.Y)
+                                if sk.Y ~= lastY then walkToPlantPos(sk.X, sk.Y)
                                 else walkToGrid(sk.X, sk.Y) end
                                 lastY = sk.Y
                                 EnsurePosition(sk.X, sk.Y)
@@ -905,7 +940,7 @@ local mainCoro = coroutine.create(function()
                                     lastPlantedY = sk.Y
                                     table.insert(plantedTiles, {X=sk.X, Y=sk.Y})
                                     skippedCount = skippedCount - 1
-                                    if point.Y ~= lastY then walkToGridSafe(point.X, point.Y)
+                                    if point.Y ~= lastY then walkToPlantPos(point.X, point.Y)
                                     else walkToGrid(point.X, point.Y) end
                                     lastY = point.Y
                                 else
