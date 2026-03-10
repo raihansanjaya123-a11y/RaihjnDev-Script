@@ -1097,16 +1097,17 @@ local mainCoro = coroutine.create(function()
 
                 for _, gy in ipairs(sweepYList) do
                     if ShouldStop() then break end
+                    repeat
 
                     -- Skip kalau Y ini sudah di-sweep saat jalan ke Y sebelumnya
                     if sweepSeen[gy] == "done" then
                         goRight = not goRight
-                        goto continueSweep
+                        break  -- skip ke iterasi berikutnya
                     end
 
                     -- Pindah Y pakai safeX — hover tetap aktif (Opsi A)
                     if cy ~= gy then
-                        -- Tandai semua Y yang dilewati sebagai "done" (ter-collect saat jalan)
+                        -- Tandai semua Y yang dilewati sebagai "done"
                         local stepY = gy > cy and 1 or -1
                         local passY = cy + stepY
                         while passY ~= gy do
@@ -1141,7 +1142,6 @@ local mainCoro = coroutine.create(function()
                         WaitIfPaused()
                         task.wait(getgenv().StepDelay)
 
-                        -- Cek apakah posisi actual berubah
                         local ax, _ = GetMyPosition()
                         if ax == lastGx then
                             blinkCount = blinkCount + 1
@@ -1157,13 +1157,12 @@ local mainCoro = coroutine.create(function()
                             blinkCount = 0
                         end
                         lastGx = ax
-
                         gx = gx + xstep
                     end
 
                     cx = targetX
                     goRight = not goRight
-                    ::continueSweep::
+                    until true
                 end
 
                 -- Hover tetap aktif saat jalan ke BreakPos
