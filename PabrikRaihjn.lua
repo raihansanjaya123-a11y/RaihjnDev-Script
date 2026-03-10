@@ -353,30 +353,20 @@ local function walkToGridSafe(targetX, targetY)
         return
     end
 
-    -- Pilih safeX terdekat dari posisi sekarang (X1 atau X99)
+    -- Pilih safeX terdekat
     local x1 = getgenv().PabrikStartX
     local x2 = getgenv().PabrikEndX
     local safeX = (math.abs(cx - x1) <= math.abs(cx - x2)) and x1 or x2
 
-    -- Step 1: geser ke safeX dulu
+    -- Step 1: geser ke safeX
     while cx ~= safeX do
         cx = cx + (safeX > cx and 1 or -1)
         SetHitBoxPos(cx, cy)
         WaitIfPaused()
         task.wait(getgenv().StepDelay)
     end
-    -- Verify di safeX
-    local retryX = 0
-    local actualX, _ = GetMyPosition()
-    while actualX ~= safeX and retryX < 10 do
-        SetHitBoxPos(safeX, cy)
-        task.wait(0.1)
-        actualX, _ = GetMyPosition()
-        retryX = retryX + 1
-    end
 
-    -- Step 2: naik/turun Y di safeX
-    -- Kalau hover belum aktif, start dulu. Kalau sudah aktif, cukup update target
+    -- Step 2: naik/turun Y — hover aktif anti gravity
     local stepY = targetY > cy and 1 or -1
     if not hoverActive then
         StartHoverLock(safeX, cy)
@@ -390,22 +380,17 @@ local function walkToGridSafe(targetX, targetY)
         WaitIfPaused()
         task.wait(getgenv().StepDelay)
     end
-    -- Verify Y
+    -- Verify Y sekali, tanpa retry loop
     local _, actualY = GetMyPosition()
-    local retryY = 0
-    while actualY ~= targetY and retryY < 10 do
+    if actualY ~= targetY then
         SetHitBoxPosConfirmed(safeX, targetY)
         task.wait(0.1)
-        _, actualY = GetMyPosition()
-        retryY = retryY + 1
     end
-    -- Kalau hover dimulai dari sini (bukan dari sweep), stop sekarang
     if not hoverActive then
         StopHoverLock()
     end
 
-    -- Step 3: geser ke targetX setelah Y confirmed
-    cx = safeX
+    -- Step 3: geser ke targetX
     while cx ~= targetX do
         cx = cx + (targetX > cx and 1 or -1)
         SetHitBoxPos(cx, targetY)
@@ -1288,16 +1273,13 @@ local mainCoro = coroutine.create(function()
             if tostring(err):find("__RESTART__") then
                 print("[Pabrik] Restart cycle diminta")
                 getgenv().PabrikRestartCycle = false
-                getgenv().PabrikPaused = false
-                pcall(function() pauseToggleRef:Set(false) end)
             else
                 warn("[Pabrik] Error:", err)
             end
         end
-        -- Jangan reset PabrikIsRunning kalau lagi pause (nanti loop akan mulai siklus baru)
-        if not getgenv().PabrikPaused then
-            getgenv().PabrikIsRunning = false
-        end
+        getgenv().PabrikIsRunning = false
+        getgenv().PabrikPaused = false
+        pcall(function() pauseToggleRef:Set(false) end)
         end
     end
 end)
