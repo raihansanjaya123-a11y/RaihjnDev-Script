@@ -775,13 +775,32 @@ local mainCoro = coroutine.create(function()
             -- CEK AWAL: block sudah banyak
             if blockAmtAwal > getgenv().BlockThreshold then
                 print("[Awal] Block banyak ("..blockAmtAwal.."), farm block dulu")
+                SendWebhook(
+                    "🔨 **[AWAL] Block Banyak → Break Dulu**\n"..
+                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                    "🧱 Block: `"..blockAmtAwal.."x`  |  Threshold: `"..getgenv().BlockThreshold.."`"
+                )
                 walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
-                KillHoverLock()  -- normal sebelum break
+                KillHoverLock()
                 task.wait(0.5)
                 DoFarmBlockLoop(getgenv().BreakPosX, getgenv().BreakPosY)
                 if ShouldStop() then return end
                 local d = DoDropSeedLoop()
-                if d > 0 then getgenv().TotalDropAllTime = getgenv().TotalDropAllTime + d end
+                if d > 0 then
+                    getgenv().TotalDropAllTime = getgenv().TotalDropAllTime + d
+                    SendWebhook(
+                        "🌿 **[AWAL] Drop Seed Selesai**\n"..
+                        "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
+                        "📦 Dropped: `"..d.."x`  |  Total: `"..getgenv().TotalDropAllTime.."x`"
+                    )
+                end
+                -- Balik ke BreakPos sebelum mulai fase 1
+                if ShouldStop() then return end
+                SendWebhook(
+                    "🔁 **[AWAL] Balik ke BreakPos → Mulai Plant**\n"..
+                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
+                )
+                walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
             end
 
             -- ════════════════════════════════
