@@ -1034,12 +1034,11 @@ local mainCoro = coroutine.create(function()
                     break
                 end
                 if lastHarvestY ~= nil and point.Y ~= lastHarvestY then
-                    walkToGridSafe(point.X, point.Y)
+                    walkToPlantPos(point.X, point.Y)
                 else
                     walkToGrid(point.X, point.Y)
                 end
                 lastHarvestY = point.Y
-                WaitIfPaused()
                 if ShouldStop() then break end
                 EnsurePosition(point.X, point.Y)
                 DoBreak(point.X, point.Y)
