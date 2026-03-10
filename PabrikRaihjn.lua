@@ -48,7 +48,7 @@ getgenv().StepDelay      = getgenv().StepDelay      or 0.1
 getgenv().BreakDelay     = getgenv().BreakDelay     or 0.15
 getgenv().TotalDropAllTime = getgenv().TotalDropAllTime or 0
 getgenv().CycleCount       = getgenv().CycleCount       or 0
-getgenv().PabrikPaused     = getgenv().PabrikPaused     or false
+
 
 -- ============================================================
 -- LOAD MODUL (semua pakai pcall)
@@ -75,20 +75,12 @@ local function EditWebhook(messageId, content)
     end
 end
 
--- Pause: berhenti di tempat, tunggu sampai di-resume atau di-stop
-local function WaitIfPaused()
-    while getgenv().PabrikPaused do
-        if not getgenv().EnablePabrik then return end  -- kalau di-stop saat pause, langsung keluar
-        if getgenv().PabrikRestartCycle then error("__RESTART__") end
-        task.wait(0.5)
-    end
-    if getgenv().PabrikRestartCycle then error("__RESTART__") end
-end
-
 local function ShouldStop()
-    WaitIfPaused()
     return not getgenv().EnablePabrik
 end
+
+local function WaitIfPaused() end  -- dihapus, tidak dipakai lagi
+
 
 local function FormatElapsed()
     local elapsed = os.time() - (getgenv().PabrikStartTime or os.time())
@@ -349,6 +341,8 @@ end
 local function walkToGridSafe(targetX, targetY)
     local cx, cy = GetMyPosition()
     if cy == targetY then
+        -- Kalau hover aktif, update target dulu biar tidak fight
+        if hoverActive then UpdateHoverLock(cx, cy) end
         walkToGrid(targetX, targetY)
         return
     end
@@ -358,9 +352,13 @@ local function walkToGridSafe(targetX, targetY)
     local x2 = getgenv().PabrikEndX
     local safeX = (math.abs(cx - x1) <= math.abs(cx - x2)) and x1 or x2
 
+    -- Update hover ke posisi sekarang dulu sebelum geser X
+    if hoverActive then UpdateHoverLock(cx, cy) end
+
     -- Step 1: geser ke safeX
     while cx ~= safeX do
         cx = cx + (safeX > cx and 1 or -1)
+        if hoverActive then UpdateHoverLock(cx, cy) end
         SetHitBoxPos(cx, cy)
         WaitIfPaused()
         task.wait(getgenv().StepDelay)
@@ -380,7 +378,7 @@ local function walkToGridSafe(targetX, targetY)
         WaitIfPaused()
         task.wait(getgenv().StepDelay)
     end
-    -- Verify Y sekali, tanpa retry loop
+    -- Verify Y sekali
     local _, actualY = GetMyPosition()
     if actualY ~= targetY then
         SetHitBoxPosConfirmed(safeX, targetY)
@@ -393,6 +391,7 @@ local function walkToGridSafe(targetX, targetY)
     -- Step 3: geser ke targetX
     while cx ~= targetX do
         cx = cx + (targetX > cx and 1 or -1)
+        if hoverActive then UpdateHoverLock(cx, targetY) end
         SetHitBoxPos(cx, targetY)
         WaitIfPaused()
         task.wait(getgenv().StepDelay)
@@ -740,7 +739,7 @@ end
 local mainCoro = coroutine.create(function()
     while true do
         task.wait(1)
-        if getgenv().EnablePabrik and not getgenv().PabrikIsRunning and not getgenv().PabrikPaused then
+        if getgenv().EnablePabrik and not getgenv().PabrikIsRunning then
 
         getgenv().PabrikIsRunning = true
         local ok, err = pcall(function()
@@ -1181,11 +1180,10 @@ local mainCoro = coroutine.create(function()
                 end
                 local updateCount = 0
                 while getgenv().PabrikIsRunning do
-                    -- hitung 60 detik tapi skip waktu pause
                     local counted = 0
                     while counted < 60 and getgenv().PabrikIsRunning do
                         task.wait(1)
-                        if not getgenv().PabrikPaused then counted = counted + 1 end
+                        counted = counted + 1
                     end
                     if not getgenv().PabrikIsRunning then break end
                     updateCount = updateCount + 1
@@ -1269,16 +1267,9 @@ local mainCoro = coroutine.create(function()
             print("[Pabrik] Siklus", getgenv().CycleCount, "selesai!")
         end)
         if not ok then
-            if tostring(err):find("__RESTART__") then
-                print("[Pabrik] Restart cycle diminta")
-                getgenv().PabrikRestartCycle = false
-            else
-                warn("[Pabrik] Error:", err)
-            end
+            warn("[Pabrik] Error:", err)
         end
         getgenv().PabrikIsRunning = false
-        getgenv().PabrikPaused = false
-        pcall(function() pauseToggleRef:Set(false) end)
         end
     end
 end)
@@ -1345,39 +1336,14 @@ local uiOk, uiErr = pcall(function()
     MainTab:CreateInput({Name="Block Threshold", PlaceholderText="1", RemoveTextAfterFocusLost=false,
         Callback=function(t) local n=tonumber(t); if n then getgenv().BlockThreshold=n end end})
 
-    local pauseToggleRef = nil
     local enableToggleRef = nil
-
-    pauseToggleRef = MainTab:CreateToggle({
-        Name="⏸️ Pause Pabrik", CurrentValue=false, Flag="PausePabrikToggle",
-        Callback=function(v)
-            getgenv().PabrikPaused = v
-            if v then
-                Rayfield:Notify({Title="⏸️ Paused", Content="Bot berhenti di titik ini.", Duration=3})
-                SendWebhook(
-                    "⏸️ **[PABRIK DIPAUSE]**\n"..
-                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                    "🏭 Siklus: `"..getgenv().CycleCount.."`"
-                )
-            else
-                Rayfield:Notify({Title="▶️ Resumed", Content="Bot lanjut dari titik terakhir.", Duration=3})
-                SendWebhook(
-                    "▶️ **[PABRIK DIRESUMED]**\n"..
-                    "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
-                )
-            end
-        end,
-    })
 
     enableToggleRef = MainTab:CreateToggle({
         Name="Enable Pabrik", CurrentValue=false, Flag="EnablePabrikToggle",
         Callback=function(v)
             getgenv().EnablePabrik = v
             if v then
-                getgenv().PabrikPaused = false
-                pcall(function() pauseToggleRef:Set(false) end)
                 getgenv().PabrikStartTime = os.time()
-                -- Detect arah sweep X dari posisi sekarang
                 local cx, _ = GetMyPosition()
                 local mid = (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2
                 getgenv().SweepGoRight = cx <= mid
@@ -1388,10 +1354,8 @@ local uiOk, uiErr = pcall(function()
                     "🌿 Seed: `"..getgenv().SelectedSeed.."`  |  🧱 Block: `"..getgenv().SelectedBlock.."`"
                 )
             else
-                getgenv().PabrikPaused = false
                 getgenv().PabrikIsRunning = false
-                pcall(function() pauseToggleRef:Set(false) end)
-                KillHoverLock()  -- matikan hover saat script di-stop
+                KillHoverLock()
                 SendWebhook(
                     "🛑 **[PABRIK DIMATIKAN]**\n"..
                     "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
