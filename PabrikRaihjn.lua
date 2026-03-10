@@ -1100,8 +1100,8 @@ local mainCoro = coroutine.create(function()
 
                     -- Skip kalau Y ini sudah di-sweep saat jalan ke Y sebelumnya
                     if sweepSeen[gy] == "done" then
-                        goRight = not goRight  -- tetap balik arah supaya zigzag konsisten
-                        continue
+                        goRight = not goRight
+                        goto continueSweep
                     end
 
                     -- Pindah Y pakai safeX — hover tetap aktif (Opsi A)
@@ -1163,6 +1163,7 @@ local mainCoro = coroutine.create(function()
 
                     cx = targetX
                     goRight = not goRight
+                    ::continueSweep::
                 end
 
                 -- Hover tetap aktif saat jalan ke BreakPos
