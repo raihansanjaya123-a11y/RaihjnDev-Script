@@ -1064,39 +1064,22 @@ local mainCoro = coroutine.create(function()
                 DoBreak(point.X, point.Y)
             end
 
-            -- ============================================================
-            -- SWEEP KHUSUS DENGAN GAP Y (naik 2 tile, tunggu, geser)
-            -- ============================================================
+                        -- === SWEEP SEDERHANA (REVERSE PATH) DENGAN HOVER UNTUK VERTIKAL ===
             if getgenv().EnablePabrik then
-                print("[Sweep] Mulai sweep dengan gap Y =", getgenv().YGap)
-                local cx, cy = GetMyPosition()  -- posisi setelah panen (tile terakhir)
-                local startY = getgenv().PabrikStartY
-                local endY   = getgenv().PabrikEndY
-                local gap    = getgenv().YGap
-                local x1     = getgenv().PabrikStartX
-                local x2     = getgenv().PabrikEndX
-
-                -- Tentukan arah Y (dari posisi sekarang menuju startY)
-                local stepY = (startY <= endY) and -gap or gap
-                local targetY = cy + stepY
-
-                while (stepY > 0 and targetY <= endY) or (stepY < 0 and targetY >= startY) do
-                    if ShouldStop() then break end
-
-                    -- Naik/turun Y di X yang sama (cx)
-                    moveYWithHover(targetY, cx)
-                    task.wait(0.2)  -- jeda 0.2 detik
-
-                    -- Geser ke ujung X lainnya
-                    local targetX = (cx == x1) and x2 or x1
-                    walkToGrid(targetX, targetY)   -- geser X (Y sama, aman)
-                    cx = targetX
-                    cy = targetY
-
-                    targetY = targetY + stepY
+                print("[Sweep] Mulai sweep reverse path")
+                for i = #plantedTiles, 1, -1 do
+                    if not getgenv().EnablePabrik then break end
+                    local point = plantedTiles[i]
+                    local cx, cy = GetMyPosition()
+                    if cy ~= point.Y then
+                        -- Pindah Y dengan hover di X yang sama
+                        moveYWithHover(point.Y, cx)
+                    end
+                    -- Geser X (Y sudah sama)
+                    walkToGrid(point.X, point.Y)
+                    task.wait(0.05)
                 end
-
-                -- Setelah semua baris, jalan ke BreakPos
+                -- Setelah semua tile, jalan ke BreakPos
                 if not ShouldStop() then
                     walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
                 end
