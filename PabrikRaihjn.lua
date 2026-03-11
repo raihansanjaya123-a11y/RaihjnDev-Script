@@ -394,7 +394,7 @@ local function walkToGridSafe(targetX, targetY)
         task.wait(0.1)
     end
     if not hoverActive then
-        StopHoverLock()
+        KillHoverLock()
     end
 
     while cx ~= targetX do
@@ -464,7 +464,7 @@ local function moveYWithHover(targetY, stayX)
     if actualY ~= targetY then
         SetHitBoxPos(stayX, targetY)
     end
-    StopHoverLock()
+    KillHoverLock()
 end
 
 -- ============================================================
