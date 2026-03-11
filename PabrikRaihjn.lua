@@ -1044,39 +1044,15 @@ local mainCoro = coroutine.create(function()
                 DoBreak(point.X, point.Y)
             end
 
-            -- Sweep zigzag cepat
-            if not ShouldStop() then
-                local seenY = {}
-                local yList = {}
-                for _, tile in ipairs(plantedTiles) do
-                    if not seenY[tile.Y] then seenY[tile.Y]=true; table.insert(yList, tile.Y) end
+            -- === SWEEP SEDERHANA (reverse path) ===
+            if getgenv().EnablePabrik then
+                print("[Harvest] Sweep balik pickup")
+                for i = #plantedTiles, 1, -1 do
+                    if not getgenv().EnablePabrik then break end
+                    walkToGrid(plantedTiles[i].X, plantedTiles[i].Y)
+                    task.wait(0.05)
                 end
-                local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
-                table.sort(yList, function(a,b) return farmGoUp and (a>b) or (a<b) end)
-
-                local cx, cy = GetMyPosition()
-                for _, gy in ipairs(yList) do
-                    if ShouldStop() then break end
-                    -- walkToGridSafe pastikan ke safeX dulu, naik/turun Y, verify Y, baru ke targetX
-                    if cy ~= gy then
-                        walkToGridSafe(cx, gy)
-                        cx, cy = GetMyPosition()
-                    end
-                    -- Sweep X ke ujung berlawanan
-                    local targetX = (cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2)
-                        and getgenv().PabrikEndX or getgenv().PabrikStartX
-                    local xstep = cx < targetX and 1 or -1
-                    local gx = cx
-                    while true do
-                        if ShouldStop() then break end
-                        if xstep > 0 and gx > targetX then break end
-                        if xstep < 0 and gx < targetX then break end
-                        SetHitBoxPos(gx, gy)
-                        WaitIfPaused()
-                        gx = gx + xstep
-                    end
-                    cx = targetX
-                end
+                -- Setelah sweep, jalan ke BreakPos
                 if not ShouldStop() then
                     walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
                 end
@@ -1091,82 +1067,6 @@ local mainCoro = coroutine.create(function()
                 "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
                 "🧱 Block didapat: `"..blockGained.."x`\n"..
                 "🌿 Seed didapat: `"..seedGained.."x`"
-            )
-
-            -- ════════════════════════════════
-            -- FASE 3B: SWEEP
-            -- ════════════════════════════════
-            if ShouldStop() then return end
-
-            -- Hitung jumlah baris unik untuk webhook
-            local sweepYList = {}
-            local sweepSeen = {}
-            for _, tile in ipairs(plantedTiles) do
-                if not sweepSeen[tile.Y] then sweepSeen[tile.Y]=true; table.insert(sweepYList, tile.Y) end
-            end
-
-            local msgIdSweep = nil
-            SendWebhook(
-                "🧹 **[FASE 3B — SWEEP]** Siklus #"..cycleNum.." ⏳\n"..
-                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`\n"..
-                "📍 Baris: `"..#sweepYList.."x`",
-                function(id) msgIdSweep = id end
-            )
-
-            if not ShouldStop() then
-                local cx, cy    = GetMyPosition()
-                local startY    = getgenv().PabrikStartY
-                local farmGoUp  = getgenv().PabrikStartY <= getgenv().PabrikEndY
-                local stepY     = farmGoUp and -getgenv().YGap or getgenv().YGap
-                local sweepDelay = math.max(getgenv().StepDelay, 0.15)
-                local goRight   = cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2
-
-                while true do
-                    if ShouldStop() then break end
-
-                    -- Sweep X full
-                    local targetX = goRight and getgenv().PabrikEndX or getgenv().PabrikStartX
-                    local xstep   = goRight and 1 or -1
-                    local gx = cx
-                    while true do
-                        if ShouldStop() then break end
-                        if xstep > 0 and gx > targetX then break end
-                        if xstep < 0 and gx < targetX then break end
-                        SetHitBoxPos(gx, cy)
-                        task.wait(sweepDelay)
-                        gx = gx + xstep
-                    end
-                    cx = targetX
-                    goRight = not goRight
-
-                    -- Selesai kalau sudah di StartY
-                    if cy == startY then break end
-
-                    -- Y berikutnya, clamp ke startY
-                    local nextY = cy + stepY
-                    if farmGoUp     and nextY < startY then nextY = startY end
-                    if not farmGoUp and nextY > startY then nextY = startY end
-
-                    -- Hover naik/turun Y di ujung X
-                    StartHoverLock(cx, cy)
-                    while cy ~= nextY do
-                        cy = cy + (nextY > cy and 1 or -1)
-                        UpdateHoverLock(cx, cy)
-                        SetHitBoxPos(cx, cy)
-                        task.wait(getgenv().StepDelay)
-                    end
-                    KillHoverLock()
-                end
-
-                -- Jalan ke BreakPos
-                if not ShouldStop() then
-                    walkToPlantPos(getgenv().BreakPosX, getgenv().BreakPosY)
-                end
-            end
-
-            EditWebhook(msgIdSweep,
-                "🧹 **[FASE 3B — SWEEP]** Siklus #"..cycleNum.." ✅ Selesai\n"..
-                "👤 `"..LP.Name.."`  |  🕐 `"..FormatElapsed().."`"
             )
 
             -- ════════════════════════════════
