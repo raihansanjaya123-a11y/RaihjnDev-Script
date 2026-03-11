@@ -1117,18 +1117,32 @@ local mainCoro = coroutine.create(function()
                 local cx, cy = GetMyPosition()
                 local goRight = cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2
 
-                -- Sort Y: mulai dari Y terdekat posisi sekarang (habis harvest),
-                -- arah balik ke StartY (kebalikan arah harvest)
+                -- Sort Y dari posisi sekarang, naik ke StartY
+                -- farmGoUp=true: plant dari bawah ke atas, harvest terakhir di atas
+                -- sweep balik dari atas ke bawah (descending)
                 local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
                 table.sort(sweepYList, function(a, b)
-                    local da = math.abs(a - cy)
-                    local db = math.abs(b - cy)
-                    if da ~= db then return da < db end
-                    -- kalau jarak sama, arahkan balik ke StartY
-                    return farmGoUp and (a < b) or (a > b)
+                    return farmGoUp and (a > b) or (a < b)
                 end)
+                -- Cari Y terdekat dari posisi sekarang sebagai titik awal
+                -- Reorder: mulai dari index terdekat cy
+                local startIdx = 1
+                local minDist = math.huge
+                for i, y in ipairs(sweepYList) do
+                    local d = math.abs(y - cy)
+                    if d < minDist then minDist = d; startIdx = i end
+                end
+                -- Reorder list mulai dari startIdx
+                local reordered = {}
+                for i = startIdx, #sweepYList do table.insert(reordered, sweepYList[i]) end
+                for i = 1, startIdx - 1 do table.insert(reordered, sweepYList[i]) end
+                sweepYList = reordered
+
+                print("[Sweep] posisi:", cx, cy, "| YList:", table.concat(sweepYList, ","))
 
                 StartHoverLock(cx, cy)
+
+                local sweepDelay = math.max(getgenv().StepDelay, 0.15)
 
                 for _, gy in ipairs(sweepYList) do
                     if ShouldStop() then break end
@@ -1144,17 +1158,18 @@ local mainCoro = coroutine.create(function()
                         end
                     end
 
-                    -- Sweep X zigzag dengan StepDelay biar block sempat di-collect
+                    -- Sweep X zigzag
                     local targetX = goRight and getgenv().PabrikEndX or getgenv().PabrikStartX
                     local xstep   = goRight and 1 or -1
                     local gx = cx
+                    print("[Sweep] baris Y"..gy.." dari X"..cx.." ke X"..targetX)
                     while true do
                         if ShouldStop() then break end
                         if xstep > 0 and gx > targetX then break end
                         if xstep < 0 and gx < targetX then break end
                         UpdateHoverLock(gx, gy)
                         SetHitBoxPos(gx, gy)
-                        task.wait(getgenv().StepDelay)
+                        task.wait(sweepDelay)
                         gx = gx + xstep
                     end
 
