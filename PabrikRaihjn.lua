@@ -1114,25 +1114,20 @@ local mainCoro = coroutine.create(function()
             )
 
             if not ShouldStop() then
-                local cx, cy = GetMyPosition()
-                local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
-                local startY   = getgenv().PabrikStartY
-                local stepY    = farmGoUp and -getgenv().YGap or getgenv().YGap  -- balik arah dari harvest
+                local cx, cy    = GetMyPosition()
+                local startY    = getgenv().PabrikStartY
+                local farmGoUp  = getgenv().PabrikStartY <= getgenv().PabrikEndY
+                local stepY     = farmGoUp and -getgenv().YGap or getgenv().YGap
                 local sweepDelay = math.max(getgenv().StepDelay, 0.15)
-
-                print("[Sweep] mulai dari X"..cx.." Y"..cy.." menuju StartY"..startY)
-
-                -- Tentukan ujung X berlawanan dari posisi sekarang
-                local goRight = cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2
+                local goRight   = cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2
 
                 while true do
                     if ShouldStop() then break end
 
-                    -- Sweep X ke ujung berlawanan (walkToGrid biasa, hover mati)
+                    -- Sweep X full
                     local targetX = goRight and getgenv().PabrikEndX or getgenv().PabrikStartX
-                    print("[Sweep] sweep X dari "..cx.." ke "..targetX.." di Y"..cy)
+                    local xstep   = goRight and 1 or -1
                     local gx = cx
-                    local xstep = goRight and 1 or -1
                     while true do
                         if ShouldStop() then break end
                         if xstep > 0 and gx > targetX then break end
@@ -1144,12 +1139,15 @@ local mainCoro = coroutine.create(function()
                     cx = targetX
                     goRight = not goRight
 
-                    -- Cek apakah sudah sampai StartY
-                    local nextY = cy + stepY
-                    if farmGoUp and nextY < startY then break end
-                    if not farmGoUp and nextY > startY then break end
+                    -- Selesai kalau sudah di StartY
+                    if cy == startY then break end
 
-                    -- Naik Y pakai hover di posisi X sekarang (ujung)
+                    -- Y berikutnya, clamp ke startY
+                    local nextY = cy + stepY
+                    if farmGoUp     and nextY < startY then nextY = startY end
+                    if not farmGoUp and nextY > startY then nextY = startY end
+
+                    -- Hover naik/turun Y di ujung X
                     StartHoverLock(cx, cy)
                     while cy ~= nextY do
                         cy = cy + (nextY > cy and 1 or -1)
@@ -1160,9 +1158,7 @@ local mainCoro = coroutine.create(function()
                     KillHoverLock()
                 end
 
-                print("[Sweep] selesai di X"..cx.." Y"..cy)
-
-                -- Jalan ke BreakPos, hover kill setelah sampai Y
+                -- Jalan ke BreakPos
                 if not ShouldStop() then
                     walkToPlantPos(getgenv().BreakPosX, getgenv().BreakPosY)
                 end
