@@ -1034,15 +1034,15 @@ local mainCoro = coroutine.create(function()
                     )
                     break
                 end
+                -- Ganti Y: pakai hover. Ganti X di baris yang sama: langsung SetHitBoxPos
                 if lastHarvestY ~= nil and point.Y ~= lastHarvestY then
                     walkToPlantPos(point.X, point.Y)
                 else
-                    walkToGrid(point.X, point.Y)
+                    SetHitBoxPos(point.X, point.Y)
                 end
                 lastHarvestY = point.Y
                 table.insert(harvestPath, {X=point.X, Y=point.Y})
                 if ShouldStop() then break end
-                EnsurePosition(point.X, point.Y)
                 DoBreak(point.X, point.Y)
             end
 
