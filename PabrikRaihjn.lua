@@ -341,21 +341,17 @@ end
 local function walkToGridSafe(targetX, targetY)
     local cx, cy = GetMyPosition()
     if cy == targetY then
-        -- Kalau hover aktif, update target dulu biar tidak fight
         if hoverActive then UpdateHoverLock(cx, cy) end
         walkToGrid(targetX, targetY)
         return
     end
 
-    -- Pilih safeX terdekat
     local x1 = getgenv().PabrikStartX
     local x2 = getgenv().PabrikEndX
     local safeX = (math.abs(cx - x1) <= math.abs(cx - x2)) and x1 or x2
 
-    -- Update hover ke posisi sekarang dulu sebelum geser X
     if hoverActive then UpdateHoverLock(cx, cy) end
 
-    -- Step 1: geser ke safeX
     while cx ~= safeX do
         cx = cx + (safeX > cx and 1 or -1)
         if hoverActive then UpdateHoverLock(cx, cy) end
@@ -364,20 +360,32 @@ local function walkToGridSafe(targetX, targetY)
         task.wait(getgenv().StepDelay)
     end
 
-    -- Step 2: naik/turun Y — hover aktif anti gravity
     local stepY = targetY > cy and 1 or -1
     if not hoverActive then
         StartHoverLock(safeX, cy)
     else
         UpdateHoverLock(safeX, cy)
     end
+
+    local char = LP.Character
+    local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+    local oldJumpPower = humanoid and humanoid.JumpPower
+    if humanoid then
+        humanoid.JumpPower = 100
+        humanoid.Jump = true
+    end
+
     while cy ~= targetY do
         cy = cy + stepY
         UpdateHoverLock(safeX, cy)
-        SetHitBoxPos(safeX, cy)  -- hover sudah handle, tidak perlu Confirmed
+        SetHitBoxPos(safeX, cy)
         task.wait(getgenv().StepDelay)
     end
-    -- Verify sekali
+
+    if humanoid and oldJumpPower then
+        humanoid.JumpPower = oldJumpPower
+    end
+
     task.wait(0.05)
     local _, actualY = GetMyPosition()
     if actualY ~= targetY then
@@ -389,7 +397,6 @@ local function walkToGridSafe(targetX, targetY)
         StopHoverLock()
     end
 
-    -- Step 3: geser ke targetX
     while cx ~= targetX do
         cx = cx + (targetX > cx and 1 or -1)
         if hoverActive then UpdateHoverLock(cx, targetY) end
@@ -407,8 +414,6 @@ local function EnsurePosition(targetX, targetY)
     end
 end
 
--- walkToPlantPos: pindah Y pakai hover lalu langsung kill
--- Dipakai di fase plant supaya tidak ada hover sisa saat nanam
 local function walkToPlantPos(targetX, targetY)
     local cx, cy = GetMyPosition()
     if cy == targetY then
@@ -418,13 +423,11 @@ local function walkToPlantPos(targetX, targetY)
     local x1 = getgenv().PabrikStartX
     local x2 = getgenv().PabrikEndX
     local safeX = (math.abs(cx - x1) <= math.abs(cx - x2)) and x1 or x2
-    -- Step 1: geser ke safeX
     while cx ~= safeX do
         cx = cx + (safeX > cx and 1 or -1)
         SetHitBoxPos(cx, cy)
         task.wait(getgenv().StepDelay)
     end
-    -- Step 2: naik/turun Y pakai hover
     local stepY = targetY > cy and 1 or -1
     StartHoverLock(safeX, cy)
     while cy ~= targetY do
@@ -433,15 +436,35 @@ local function walkToPlantPos(targetX, targetY)
         SetHitBoxPos(safeX, cy)
         task.wait(getgenv().StepDelay)
     end
-    -- Kill hover langsung setelah Y sampai
     KillHoverLock()
-    -- Step 3: geser ke targetX
     while cx ~= targetX do
         cx = cx + (targetX > cx and 1 or -1)
         SetHitBoxPos(cx, targetY)
         task.wait(getgenv().StepDelay)
     end
     SetHitBoxPos(targetX, targetY)
+end
+
+-- ============================================================
+-- FUNGSI KHUSUS UNTUK NAIK Y DENGAN HOVER (tanpa mengubah X)
+-- ============================================================
+local function moveYWithHover(targetY, stayX)
+    local cx, cy = GetMyPosition()
+    if cy == targetY then return end
+    local stepY = targetY > cy and 1 or -1
+    StartHoverLock(stayX, cy)
+    while cy ~= targetY do
+        cy = cy + stepY
+        UpdateHoverLock(stayX, cy)
+        SetHitBoxPos(stayX, cy)
+        task.wait(getgenv().StepDelay)
+    end
+    task.wait(0.05)
+    local _, actualY = GetMyPosition()
+    if actualY ~= targetY then
+        SetHitBoxPos(stayX, targetY)
+    end
+    StopHoverLock()
 end
 
 -- ============================================================
@@ -498,7 +521,6 @@ local function CheckDropsAtGrid(TargetGridX, TargetGridY)
                     local dY = math.floor(pos.Y / getgenv().GridSize + 0.5)
 
                     if dX == TargetGridX and dY == TargetGridY then
-                        -- Cek apakah drop ini adalah Sapling
                         local isSapling = false
                         for _, attrValue in pairs(obj:GetAttributes()) do
                             if type(attrValue) == "string" and string.find(string.lower(attrValue), "sapling") then isSapling = true; break end
@@ -513,7 +535,6 @@ local function CheckDropsAtGrid(TargetGridX, TargetGridY)
                             end
                         end
 
-                        -- Cuma me-return True kalau dia beneran Sapling
                         if isSapling then return true end
                     end
                 end
@@ -668,8 +689,7 @@ local function DoBreak(gx, gy)
 end
 
 -- ============================================================
--- HELPER: Farm Block loop (dipakai 2x, di awal dan fase 4)
--- TIDAK DIUBAH
+-- HELPER: Farm Block loop
 -- ============================================================
 local function DoFarmBlockLoop(breakPosX, breakPosY)
     local BreakTarget = Vector2.new(breakPosX - 1, breakPosY)
@@ -1044,18 +1064,43 @@ local mainCoro = coroutine.create(function()
                 DoBreak(point.X, point.Y)
             end
 
-            -- === SWEEP SEDERHANA (reverse path) ===
+            -- ============================================================
+            -- SWEEP KHUSUS DENGAN GAP Y (naik 2 tile, tunggu, geser)
+            -- ============================================================
             if getgenv().EnablePabrik then
-                print("[Harvest] Sweep balik pickup")
-                for i = #plantedTiles, 1, -1 do
-                    if not getgenv().EnablePabrik then break end
-                    walkToGrid(plantedTiles[i].X, plantedTiles[i].Y)
-                    task.wait(0.05)
+                print("[Sweep] Mulai sweep dengan gap Y =", getgenv().YGap)
+                local cx, cy = GetMyPosition()  -- posisi setelah panen (tile terakhir)
+                local startY = getgenv().PabrikStartY
+                local endY   = getgenv().PabrikEndY
+                local gap    = getgenv().YGap
+                local x1     = getgenv().PabrikStartX
+                local x2     = getgenv().PabrikEndX
+
+                -- Tentukan arah Y (dari posisi sekarang menuju startY)
+                local stepY = (startY <= endY) and -gap or gap
+                local targetY = cy + stepY
+
+                while (stepY > 0 and targetY <= endY) or (stepY < 0 and targetY >= startY) do
+                    if ShouldStop() then break end
+
+                    -- Naik/turun Y di X yang sama (cx)
+                    moveYWithHover(targetY, cx)
+                    task.wait(0.2)  -- jeda 0.2 detik
+
+                    -- Geser ke ujung X lainnya
+                    local targetX = (cx == x1) and x2 or x1
+                    walkToGrid(targetX, targetY)   -- geser X (Y sama, aman)
+                    cx = targetX
+                    cy = targetY
+
+                    targetY = targetY + stepY
                 end
-                -- Setelah sweep, jalan ke BreakPos
+
+                -- Setelah semua baris, jalan ke BreakPos
                 if not ShouldStop() then
                     walkToGridSafe(getgenv().BreakPosX, getgenv().BreakPosY)
                 end
+                print("[Sweep] Selesai")
             end
 
             local blockGained = GetItemAmountByID(getgenv().SelectedBlock) - blockBefore
@@ -1087,7 +1132,6 @@ local mainCoro = coroutine.create(function()
 
             local breakStart = os.time()
             local breakUpdateThread = task.spawn(function()
-                -- Tunggu msgIdBreak dapat value dulu (max 10 detik)
                 local waited = 0
                 while not msgIdBreak and waited < 10 do
                     task.wait(1); waited = waited + 1
