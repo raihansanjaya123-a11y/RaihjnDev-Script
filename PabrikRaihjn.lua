@@ -1115,67 +1115,52 @@ local mainCoro = coroutine.create(function()
 
             if not ShouldStop() then
                 local cx, cy = GetMyPosition()
-                local goRight = cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2
-
-                -- Sort Y dari posisi sekarang, naik ke StartY
-                -- farmGoUp=true: plant dari bawah ke atas, harvest terakhir di atas
-                -- sweep balik dari atas ke bawah (descending)
                 local farmGoUp = getgenv().PabrikStartY <= getgenv().PabrikEndY
-                table.sort(sweepYList, function(a, b)
-                    return farmGoUp and (a > b) or (a < b)
-                end)
-                -- Cari Y terdekat dari posisi sekarang sebagai titik awal
-                -- Reorder: mulai dari index terdekat cy
-                local startIdx = 1
-                local minDist = math.huge
-                for i, y in ipairs(sweepYList) do
-                    local d = math.abs(y - cy)
-                    if d < minDist then minDist = d; startIdx = i end
-                end
-                -- Reorder list mulai dari startIdx
-                local reordered = {}
-                for i = startIdx, #sweepYList do table.insert(reordered, sweepYList[i]) end
-                for i = 1, startIdx - 1 do table.insert(reordered, sweepYList[i]) end
-                sweepYList = reordered
-
-                print("[Sweep] posisi:", cx, cy, "| YList:", table.concat(sweepYList, ","))
-
-                StartHoverLock(cx, cy)
-
+                local startY   = getgenv().PabrikStartY
+                local stepY    = farmGoUp and -getgenv().YGap or getgenv().YGap  -- balik arah dari harvest
                 local sweepDelay = math.max(getgenv().StepDelay, 0.15)
 
-                for _, gy in ipairs(sweepYList) do
+                print("[Sweep] mulai dari X"..cx.." Y"..cy.." menuju StartY"..startY)
+
+                -- Tentukan ujung X berlawanan dari posisi sekarang
+                local goRight = cx <= (getgenv().PabrikStartX + getgenv().PabrikEndX) / 2
+
+                while true do
                     if ShouldStop() then break end
 
-                    -- Pindah Y pakai hover
-                    if cy ~= gy then
-                        local stepY = gy > cy and 1 or -1
-                        while cy ~= gy do
-                            cy = cy + stepY
-                            UpdateHoverLock(cx, cy)
-                            SetHitBoxPos(cx, cy)
-                            task.wait(getgenv().StepDelay)
-                        end
-                    end
-
-                    -- Sweep X zigzag
+                    -- Sweep X ke ujung berlawanan (walkToGrid biasa, hover mati)
                     local targetX = goRight and getgenv().PabrikEndX or getgenv().PabrikStartX
-                    local xstep   = goRight and 1 or -1
+                    print("[Sweep] sweep X dari "..cx.." ke "..targetX.." di Y"..cy)
                     local gx = cx
-                    print("[Sweep] baris Y"..gy.." dari X"..cx.." ke X"..targetX)
+                    local xstep = goRight and 1 or -1
                     while true do
                         if ShouldStop() then break end
                         if xstep > 0 and gx > targetX then break end
                         if xstep < 0 and gx < targetX then break end
-                        UpdateHoverLock(gx, gy)
-                        SetHitBoxPos(gx, gy)
+                        SetHitBoxPos(gx, cy)
                         task.wait(sweepDelay)
                         gx = gx + xstep
                     end
-
                     cx = targetX
                     goRight = not goRight
+
+                    -- Cek apakah sudah sampai StartY
+                    local nextY = cy + stepY
+                    if farmGoUp and nextY < startY then break end
+                    if not farmGoUp and nextY > startY then break end
+
+                    -- Naik Y pakai hover di posisi X sekarang (ujung)
+                    StartHoverLock(cx, cy)
+                    while cy ~= nextY do
+                        cy = cy + (nextY > cy and 1 or -1)
+                        UpdateHoverLock(cx, cy)
+                        SetHitBoxPos(cx, cy)
+                        task.wait(getgenv().StepDelay)
+                    end
+                    KillHoverLock()
                 end
+
+                print("[Sweep] selesai di X"..cx.." Y"..cy)
 
                 -- Jalan ke BreakPos, hover kill setelah sampai Y
                 if not ShouldStop() then
